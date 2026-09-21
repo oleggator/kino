@@ -94,6 +94,10 @@ class PlayerActivity : Activity() {
         val playerView = PlayerView(this)
         playerView.player = player
         playerView.keepScreenOn = true
+        // The controller already offers an audio-track selector; this puts subtitles
+        // beside it. Hidden by default, and media3 disables it when a file has no text
+        // tracks, so there is nothing to handle for that case.
+        playerView.setShowSubtitleButton(true)
 
         debugView = TextView(this).apply {
             setTextColor(Color.WHITE)
@@ -147,13 +151,11 @@ class PlayerActivity : Activity() {
     }
 
     /**
-     * INFO (or MENU) toggles the readout; `adb shell input keyevent 165` works too, for
-     * remotes with no INFO button. The tell for passthrough is the *absence* of an audio
-     * decoder: a decoder name there means the track was decoded to PCM instead of
-     * reaching the soundbar as a bitstream.
+     * INFO toggles the debug readout. Subtitles and audio tracks live in the player
+     * controller, not here. For remotes with no INFO key: `adb shell input keyevent 165`.
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_INFO || keyCode == KeyEvent.KEYCODE_MENU) {
+        if (keyCode == KeyEvent.KEYCODE_INFO) {
             debugOn = !debugOn
             debugView.visibility = if (debugOn) View.VISIBLE else View.GONE
             if (debugOn) debug.start() else debug.stop()
