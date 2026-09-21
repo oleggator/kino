@@ -223,7 +223,9 @@ class PlayerActivity : Activity() {
      * controller, not here. For remotes with no INFO key: `adb shell input keyevent 165`.
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_INFO) {
+        // debugView is only set once onCreate has got past the missing-URL check, and
+        // a finished activity still receives events until it is torn down.
+        if (keyCode == KeyEvent.KEYCODE_INFO && ::debugView.isInitialized) {
             debugOn = !debugOn
             debugView.visibility = if (debugOn) View.VISIBLE else View.GONE
             if (debugOn) debug?.start() else debug?.stop()
