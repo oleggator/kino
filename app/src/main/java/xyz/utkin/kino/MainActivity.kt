@@ -107,6 +107,8 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun App() {
         val context = LocalContext.current
+        // ponytail: one server, one root. A second would need a picker screen and a
+        // key scheme for the resume positions; add both if there is ever a second.
         // HttpUrl is not Parcelable, so the stack is saved as strings.
         var stack by rememberSaveable {
             mutableStateOf(listOfNotNull(prefs.getString("url", null)))

@@ -33,7 +33,13 @@ data class Entry(val name: String, val url: HttpUrl, val isDir: Boolean) {
     val label: String get() = if (isDir) "$name/" else name
 }
 
-/** One `PROPFIND Depth: 1` against [url]. Directories plus playable files, nothing else. */
+/**
+ * One `PROPFIND Depth: 1` against [url]. Directories plus playable files, nothing else.
+ *
+ * ponytail: no paging — the whole listing is fetched and held. WebDAV has no paging
+ * of its own, so this only bites on a directory with thousands of entries; the fix
+ * then is a windowed adapter, not a different request.
+ */
 fun webdavList(client: OkHttpClient, url: HttpUrl, auth: String): List<Entry> {
     val request = Request.Builder()
         .url(url)

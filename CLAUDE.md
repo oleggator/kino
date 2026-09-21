@@ -1,7 +1,7 @@
 # Kino
 
-Minimal Android TV WebDAV Direct Play client. ~470 lines of Kotlin, three
-dependencies, no layout XML.
+Minimal Android TV WebDAV Direct Play client. ~700 lines of Kotlin across three
+source files, six dependencies, no layout XML.
 
 ## The design premise — do not "improve" this
 
@@ -41,28 +41,47 @@ not written here is one that cannot get between the bitstream and the soundbar.
   material3's stock palette.
 - Nothing is focused by default in Compose, which on a TV means the D-pad does nothing
   at all. `FocusRequester` on the first row, re-fired per directory, is not optional.
-- `LocalBringIntoViewSpec` — the old pivot-scrolling hook — was removed in foundation
-  1.12.1. `contentPadding` on the `LazyColumn` is what keeps the focused row off the
-  screen edge now.
+- `LocalBringIntoViewSpec`, the CompositionLocal usually reached for to pivot the
+  focused row away from the screen edge, is not in the foundation this resolves
+  (1.10.5) and is gone from 1.12.1 as well. `contentPadding` on the `LazyColumn` does
+  that job here.
+- **Compose skips on identity, not equality, for unstable parameter types.** `List` is
+  unstable, so a list rebuilt during composition and passed down makes the callee and
+  every row inside it recompose every time anything changes — which looks like the
+  rows flashing. The `remember(entries, stack.size)` around `rows` in `MainActivity`
+  is load-bearing, not tidiness.
+- A `LaunchedEffect` body runs *after* composition, so clearing state inside one is
+  always a frame late. The listing is tagged with the directory it came from and a
+  mismatched tag reads as empty, which makes a stale listing impossible to render
+  rather than merely brief.
+- `AudioCapabilities.getCapabilities` has three public overloads and only the
+  four-argument one is not deprecated. The fourth argument is
+  `spatializerChannelMasks`; empty is what the deprecated overload passed, and it is
+  right here anyway — the spatializer virtualises surround rather than passing a
+  bitstream through.
 - The Kotlin plugin must be at least the `kotlin-stdlib` version media3 and okhttp
   resolve to (2.2.10), or the compiler rejects their metadata.
 - JDK 21. The machine default may be newer, and AGP 8.10 rejects it.
 - `HttpURLConnection.setRequestMethod("PROPFIND")` throws `ProtocolException`. That is
   the only reason OkHttp is a dependency — playback uses media3's own
   `DefaultHttpDataSource`.
-- `InputType` variation bits are inert without a class bit. Use
-  `TYPE_CLASS_TEXT or TYPE_TEXT_VARIATION_URI`, or the field is uneditable.
 - `PlayerView` paints only the video rectangle. Letterbox bars show whatever is behind
   it, hence the explicit black on the root view and the window.
 
 ## Build
 
 ```
-./gradlew test assembleDebug
+./gradlew test assembleRelease
 ```
 
-`assembleRelease` is worth running after dependency changes: R8 is on for release and
-takes the APK from 15 MB to 3 MB, which is what pays for Compose.
+Release, not debug. Two independent things come with it: R8, which takes the APK from
+15 MB to 3 MB, and `debuggable = false`, which is what makes Compose smooth on a TV.
+Release is signed with the debug key — this is a sideloaded app, never published — so
+it installs over a debug build.
+
+`.github/workflows/build.yml` runs the same two tasks. It deletes the
+`org.gradle.java.home` line from `gradle.properties` first, because that path exists on
+one machine only and the runner's JDK 21 is already on `JAVA_HOME`.
 
 `WebDavTest` is a plain JVM test. `parseMultistatus` uses `javax.xml` DOM specifically
 so it runs with no Robolectric and no extra dependency — keep it that way. One of its
@@ -72,10 +91,12 @@ cases is built from the real server's dialect (non-default port, deep base path,
 ## Files
 
 ```
-WebDav.kt          PROPFIND + namespace-aware DOM parse. TAG and PREFS live here.
-MainActivity.kt    Compose UI: browse list, settings form, directory stack
-PlayerActivity.kt  player, resume, INFO debug overlay, sink capability readout
-res/values/theme.xml   palette + the window theme
+WebDav.kt                    PROPFIND + namespace-aware DOM parse. TAG lives here.
+MainActivity.kt              Compose UI: browse list, settings form, directory stack
+PlayerActivity.kt            player, resume, INFO debug overlay, sink readout
+res/values/theme.xml         palette + the window theme
+res/drawable/banner.xml      320x180, what the Leanback launcher shows
+res/drawable/ic_launcher.xml square icon, for Settings only
 ```
 
 The UI is **Compose with `androidx.tv:tv-material`** (Material 3 for TV). The point of
@@ -96,5 +117,7 @@ survive recreation (the directory stack), for zero extra dependencies.
 
 ## Deliberate shortcuts
 
-Marked with `ponytail:` comments at their sites: single server, no paging, unbounded
-resume-position preferences, extension-based video detection.
+Each is marked with a `ponytail:` comment where it lives, saying what the ceiling is
+and what the upgrade would be: single server (`MainActivity`), no paging (`WebDav`),
+unbounded resume-position preferences (`PlayerActivity`), extension-based video
+detection (`WebDav`).
