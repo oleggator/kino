@@ -125,7 +125,8 @@ class MainActivity : ComponentActivity() {
 
         if (showSettings) {
             SettingsScreen(
-                onCancel = { if (stack.isNotEmpty()) showSettings = false },
+                canCancel = stack.isNotEmpty(),
+                onCancel = { showSettings = false },
                 onSave = { saved ->
                     stack = listOf(saved.toString())
                     showSettings = false
@@ -189,14 +190,17 @@ class MainActivity : ComponentActivity() {
     )
 
     @Composable
-    private fun SettingsScreen(onSave: (HttpUrl) -> Unit, onCancel: () -> Unit) {
+    private fun SettingsScreen(canCancel: Boolean, onSave: (HttpUrl) -> Unit, onCancel: () -> Unit) {
         val context = LocalContext.current
         var url by rememberSaveable { mutableStateOf(prefs.getString("url", "").orEmpty()) }
         var user by rememberSaveable { mutableStateOf(prefs.getString("user", "").orEmpty()) }
         var pass by rememberSaveable { mutableStateOf(prefs.getString("pass", "").orEmpty()) }
         val firstField = remember { FocusRequester() }
 
-        BackHandler { onCancel() }
+        // Disabled with no server configured, so Back falls through to the system and
+        // leaves the app. Enabled, it would call an onCancel that deliberately refuses
+        // to dismiss — leaving Back doing nothing at all on a fresh install.
+        BackHandler(enabled = canCancel) { onCancel() }
         LaunchedEffect(Unit) { runCatching { firstField.requestFocus() } }
 
         // OutlinedTextField reads androidx.compose.material3's MaterialTheme, not the
@@ -268,7 +272,7 @@ class MainActivity : ComponentActivity() {
                         },
                     ) { Text("Save") }
                     Spacer(Modifier.width(12.dp))
-                    Button(onClick = onCancel) { Text("Cancel") }
+                    if (canCancel) Button(onClick = onCancel) { Text("Cancel") }
                 }
             }
         }
