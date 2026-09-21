@@ -39,7 +39,8 @@ Compose UI on Material 3 for TV, with its own dark theme rather than the panel's
 D-pad navigates — the focused row scales and glows — OK opens, Back goes up one
 directory. Focus starts on the first row of every listing, including after going back.
 A listing still loading after 250ms shows a bar under the path. Playback position is
-remembered per file and reset once a file is watched to the end.
+remembered per file and reset once a file is watched to the end. Leaving the player —
+Home, or another app — releases the decoder; coming back resumes from where it was.
 
 ## Checking passthrough
 

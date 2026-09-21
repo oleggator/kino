@@ -77,10 +77,14 @@ class PlayerActivity : Activity() {
         .build()
 
     private lateinit var prefs: SharedPreferences
-    private lateinit var player: ExoPlayer
+    private lateinit var playerView: PlayerView
     private lateinit var debugView: TextView
-    private lateinit var debug: DebugTextViewHelper
     private lateinit var url: String
+
+    // Nullable, not lateinit: these exist only between onStart and onStop, and
+    // `isInitialized` would still be true for a released player.
+    private var player: ExoPlayer? = null
+    private var debug: DebugTextViewHelper? = null
     private var debugOn = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,19 +92,9 @@ class PlayerActivity : Activity() {
         url = intent.getStringExtra(EXTRA_URL) ?: run { finish(); return }
         prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-        val http = DefaultHttpDataSource.Factory()
-            .setDefaultRequestProperties(mapOf("Authorization" to basicAuth()))
-            .setAllowCrossProtocolRedirects(true)
-
-        player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(http))
-            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
-            .build()
-
         // PlayerView defaults to a SurfaceView, which is what HDR and tunneling want.
         // Subtitle cues (SubRip / WebVTT / SSA / TTML) render themselves.
-        val playerView = PlayerView(this)
-        playerView.player = player
+        playerView = PlayerView(this)
         playerView.keepScreenOn = true
         // The controller already offers an audio-track selector; this puts subtitles
         // beside it. Hidden by default, and media3 disables it when a file has no text
@@ -129,15 +123,48 @@ class PlayerActivity : Activity() {
                 )
             },
         )
-        debug = SinkAwareDebug(player, debugView)
+    }
+
+    /**
+     * The player lives between onStart and onStop, not for the life of the activity.
+     * A MediaCodec instance and an AudioTrack are scarce on a TV — holding them while
+     * backgrounded can stop another app getting a decoder, and keeps the (e)ARC link
+     * claimed. The resume position is what carries across, exactly as it does between
+     * separate launches.
+     */
+    override fun onStart() {
+        super.onStart()
+        // onCreate finishes early when EXTRA_URL is missing, and onStart still runs.
+        if (::url.isInitialized) openPlayer()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        releasePlayer()
+    }
+
+    private fun openPlayer() {
+        val http = DefaultHttpDataSource.Factory()
+            .setDefaultRequestProperties(mapOf("Authorization" to basicAuth()))
+            .setAllowCrossProtocolRedirects(true)
+
+        val p = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(http))
+            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
+            .build()
+        player = p
+        playerView.player = p
+
+        debug = SinkAwareDebug(p, debugView)
+        if (debugOn) debug?.start()
 
         // Without this the app is silent in logcat: EventLogger is what prints the
         // chosen decoder, the audio sink configuration and every format change.
-        player.addAnalyticsListener(EventLogger())
+        p.addAnalyticsListener(EventLogger())
 
         // Without this a codec the TV cannot decode, or a dead connection, is just a
         // black screen forever. Same reasoning as the listing failure in MainActivity.
-        player.addListener(object : Player.Listener {
+        p.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 Log.w(TAG, "playback failed for $url", error)
                 val detail = error.cause?.message ?: error.message
@@ -148,9 +175,19 @@ class PlayerActivity : Activity() {
 
         val resumeMs = prefs.getLong(positionKey(), 0L)
         Log.i(TAG, "play $url from ${resumeMs}ms; ${sinkSummary()}")
-        player.setMediaItem(MediaItem.fromUri(url), resumeMs)
-        player.playWhenReady = true
-        player.prepare()
+        p.setMediaItem(MediaItem.fromUri(url), resumeMs)
+        p.playWhenReady = true
+        p.prepare()
+    }
+
+    private fun releasePlayer() {
+        val p = player ?: return
+        savePosition()
+        debug?.stop()
+        debug = null
+        playerView.player = null
+        p.release()
+        player = null
     }
 
     private inner class SinkAwareDebug(p: ExoPlayer, v: TextView) : DebugTextViewHelper(p, v) {
@@ -189,30 +226,16 @@ class PlayerActivity : Activity() {
         if (keyCode == KeyEvent.KEYCODE_INFO) {
             debugOn = !debugOn
             debugView.visibility = if (debugOn) View.VISIBLE else View.GONE
-            if (debugOn) debug.start() else debug.stop()
+            if (debugOn) debug?.start() else debug?.stop()
             return true
         }
         return super.onKeyDown(keyCode, event)
     }
 
-    override fun onPause() {
-        super.onPause()
-        if (!::player.isInitialized) return
-        savePosition()
-        player.pause()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        if (!::player.isInitialized) return
-        savePosition()
-        debug.stop()
-        player.release()
-    }
-
     private fun savePosition() {
-        val duration = player.duration
-        val position = player.currentPosition
+        val p = player ?: return
+        val duration = p.duration
+        val position = p.currentPosition
         // ponytail: one long per URL in SharedPreferences. No watched flag, no schema,
         // no pruning. Add a Room table if this ever needs to sync or expire.
         val remember = if (duration > 0 && position > duration - FINISHED_SLACK_MS) 0L else position
