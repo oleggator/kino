@@ -24,8 +24,9 @@ First launch asks for the WebDAV URL, username and password. Leave the credentia
 blank if the server needs none. The first row of the root listing, `⚙ Server settings`,
 reopens that dialog.
 
-Dark theme of its own rather than the TV's, so it looks the same on any panel. D-pad
-navigates — the focused row is an accent block — OK opens, Back goes up one directory. Playback position is remembered
+Compose UI on Material 3 for TV, with its own dark theme rather than the panel's. D-pad
+navigates — the focused row scales and glows — OK opens, Back goes up one directory.
+Coming back out of a folder returns focus to the row you left. Playback position is remembered
 per file and reset once a file is watched to the end.
 
 ## Checking passthrough

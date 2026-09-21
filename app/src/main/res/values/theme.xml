@@ -1,27 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The only XML the app has beyond the manifest and the banner: a theme cannot be
-     built in code. Palette lives here too rather than in its own colors.xml. -->
+<!-- The UI is Compose; this is only the window theme, and it exists for one reason:
+     windowBackground is what the TV paints before Compose's first frame, so without
+     it the app opens on a white flash. The two colours are here rather than in a
+     colors.xml because banner.xml references them too. -->
 <resources>
 
     <color name="kino_bg">#10151C</color>
     <color name="kino_accent">#3DDC84</color>
 
-    <!-- Theme.Material, not Theme.DeviceDefault: DeviceDefault is whatever the TV
-         vendor skinned it into, which on a TCL panel is a grey 2014 action bar.
-         Material is fixed, dark, and looks the same on every set. -->
     <style name="Kino" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:colorAccent">@color/kino_accent</item>
         <item name="android:colorBackground">@color/kino_bg</item>
         <item name="android:windowBackground">@color/kino_bg</item>
-        <item name="android:textColorPrimary">#FFFFFFFF</item>
-        <item name="android:textColorSecondary">#FF9AA0A6</item>
-        <!-- AlertDialog.Builder(context) resolves this itself, so the settings dialog
-             needs no code to pick up the dark theme and the accent underlines. -->
-        <item name="android:alertDialogTheme">@style/Kino.Dialog</item>
-    </style>
-
-    <style name="Kino.Dialog" parent="@android:style/Theme.Material.Dialog.Alert">
-        <item name="android:colorAccent">@color/kino_accent</item>
     </style>
 
     <style name="Kino.Player" parent="@android:style/Theme.Material.NoActionBar.Fullscreen">
