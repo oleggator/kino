@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Square icon, for Settings → Apps and anywhere else a square is expected. The TV
+     home screen uses banner.xml instead, which is why this is the plain shape with no
+     wordmark — at that size four letters would be mush.
+
+     Deliberately not an adaptive icon: shape masking is an Android launcher feature,
+     and this app declares android.software.leanback as required, so it only ever
+     installs somewhere that uses the banner. One file instead of four.
+
+     The triangle is placed by its centroid, not its bounding box: a triangle carries
+     its visual mass on the flat side, so a bbox-centred one reads as sitting left. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="@color/kino_bg"
+        android:pathData="M0,0h108v108h-108z" />
+
+    <path
+        android:fillColor="@color/kino_accent"
+        android:pathData="M36,25 L36,83 L88,54 Z" />
+
+</vector>

@@ -1,14 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Leanback launcher will not list an app without a banner. 320x180 is the spec. -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <color android:color="@color/kino_bg" />
-    </item>
-    <item android:gravity="center">
-        <shape android:shape="rectangle">
-            <solid android:color="@color/kino_accent" />
-            <corners android:radius="12dp" />
-            <size android:width="72dp" android:height="72dp" />
-        </shape>
-    </item>
-</layer-list>
+<!-- The Leanback launcher will not list an app without a banner. 320x180 is the spec,
+     and this is what actually shows on the TV home screen — the icon below is only
+     seen in Settings. Drawn as a vector so there are no PNGs at five densities.
+
+     The play triangle and the square counter of the O are the same two shapes the
+     browse list uses for files (▶) and directories (▣). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <path
+        android:fillColor="@color/kino_bg"
+        android:pathData="M0,0h320v180h-320z" />
+
+    <!-- Mark -->
+    <path
+        android:fillColor="@color/kino_accent"
+        android:pathData="M58,60 L58,120 L108,90 Z" />
+
+    <!-- K -->
+    <path
+        android:fillColor="@color/kino_accent"
+        android:pathData="M133,75 h8 v30 h-8 z" />
+    <path
+        android:fillColor="@color/kino_accent"
+        android:pathData="M141,90 L157,74 L162,79 L146,95 Z" />
+    <path
+        android:fillColor="@color/kino_accent"
+        android:pathData="M141,90 L157,106 L162,101 L146,85 Z" />
+
+    <!-- I -->
+    <path
+        android:fillColor="@color/kino_accent"
+        android:pathData="M172,75 h8 v30 h-8 z" />
+
+    <!-- N -->
+    <path
+        android:fillColor="@color/kino_accent"
+        android:pathData="M190,75 h8 v30 h-8 z" />
+    <path
+        android:fillColor="@color/kino_accent"
+        android:pathData="M198,75 L206,75 L218,105 L210,105 Z" />
+    <path
+        android:fillColor="@color/kino_accent"
+        android:pathData="M210,75 h8 v30 h-8 z" />
+
+    <!-- O, counter knocked out with evenOdd rather than painted in the background
+         colour, so the banner still reads correctly on a non-dark launcher. -->
+    <path
+        android:fillColor="@color/kino_accent"
+        android:fillType="evenOdd"
+        android:pathData="M228,75 h32 v30 h-32 z M236,83 h16 v14 h-16 z" />
+
+</vector>

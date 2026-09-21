@@ -13,7 +13,7 @@
     <application
         android:allowBackup="false"
         android:banner="@drawable/banner"
-        android:icon="@drawable/banner"
+        android:icon="@drawable/ic_launcher"
         android:label="Kino"
         android:usesCleartextTraffic="true"
         android:theme="@style/Kino">
