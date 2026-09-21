@@ -49,6 +49,12 @@ not written here is one that cannot get between the bitstream and the soundbar.
   reads **compose-material3's** `MaterialTheme`, not the TV one. The settings screen
   nests both themes for that reason — remove the nesting and the fields render in
   material3's stock palette.
+- The other half of that trap: content passed *into* a compose-material3 component must
+  also be compose-material3's. `androidx.tv.material3.LocalContentColor` defaults to
+  **`Color.Black`**, and it is a different CompositionLocal from compose-material3's, so
+  a tv-material `Text` in an `OutlinedTextField` label slot never sees the colour the
+  field provides and renders black on the dark background. Hence `M3Text` for every
+  label and placeholder.
 - Nothing is focused by default in Compose, which on a TV means the D-pad does nothing
   at all. `FocusRequester` on the first row, re-fired per directory, is not optional.
 - `LocalBringIntoViewSpec`, the CompositionLocal usually reached for to pivot the

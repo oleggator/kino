@@ -56,8 +56,10 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 // Text, Button, Surface, MaterialTheme and darkColorScheme all exist in BOTH
 // androidx.tv.material3 and androidx.compose.material3. The TV ones are imported
-// plainly above; these two are aliased so the collision cannot go unnoticed.
+// plainly above; these are aliased so the collision cannot go unnoticed. M3Text is
+// not optional inside an OutlinedTextField: see the note on its label slots below.
 import androidx.compose.material3.MaterialTheme as M3Theme
+import androidx.compose.material3.Text as M3Text
 import androidx.compose.material3.darkColorScheme as m3DarkColorScheme
 
 const val PREFS = "kino"
@@ -213,13 +215,17 @@ class MainActivity : ComponentActivity() {
                 Modifier.fillMaxSize().padding(horizontal = SAFE_H, vertical = SAFE_V),
                 verticalArrangement = Arrangement.Center,
             ) {
+                // The label and placeholder slots below take M3Text, not tv-material's
+                // Text. OutlinedTextField colours its slots through compose-material3's
+                // LocalContentColor; tv-material's Text reads tv-material's, a different
+                // CompositionLocal, whose default is Color.Black — invisible here.
                 Text("Server", fontSize = 32.sp, fontWeight = FontWeight.Light, color = ON_SURFACE)
                 Spacer(Modifier.height(24.dp))
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
-                    label = { Text("WebDAV URL") },
-                    placeholder = { Text("https://host/remote.php/dav/files/me/") },
+                    label = { M3Text("WebDAV URL") },
+                    placeholder = { M3Text("https://host/remote.php/dav/files/me/") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().focusRequester(firstField),
                 )
@@ -227,7 +233,7 @@ class MainActivity : ComponentActivity() {
                 OutlinedTextField(
                     value = user,
                     onValueChange = { user = it },
-                    label = { Text("Username") },
+                    label = { M3Text("Username") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -235,7 +241,7 @@ class MainActivity : ComponentActivity() {
                 OutlinedTextField(
                     value = pass,
                     onValueChange = { pass = it },
-                    label = { Text("Password") },
+                    label = { M3Text("Password") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
