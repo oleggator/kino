@@ -2,11 +2,11 @@
 <!-- The Leanback launcher will not list an app without a banner. 320x180 is the spec. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
-        <color android:color="#10151C" />
+        <color android:color="@color/kino_bg" />
     </item>
     <item android:gravity="center">
         <shape android:shape="rectangle">
-            <solid android:color="#3DDC84" />
+            <solid android:color="@color/kino_accent" />
             <corners android:radius="12dp" />
             <size android:width="72dp" android:height="72dp" />
         </shape>

@@ -16,10 +16,8 @@
         android:icon="@drawable/banner"
         android:label="Kino"
         android:usesCleartextTraffic="true"
-        android:theme="@android:style/Theme.DeviceDefault">
+        android:theme="@style/Kino">
 
-        <!-- Theme.DeviceDefault keeps an action bar, which is the breadcrumb:
-             MainActivity sets `title` to the current WebDAV path. -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -33,7 +31,6 @@
             android:name=".PlayerActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
             android:exported="false"
-            android:launchMode="singleTask"
-            android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen" />
+            android:theme="@style/Kino.Player" />
     </application>
 </manifest>

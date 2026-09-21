@@ -56,9 +56,16 @@ cases is built from the real server's dialect (non-default port, deep base path,
 WebDav.kt          PROPFIND + namespace-aware DOM parse. TAG and PREFS live here.
 MainActivity.kt    ListView browse, setup dialog, directory stack
 PlayerActivity.kt  player, resume, INFO debug overlay, sink capability readout
+res/values/theme.xml   palette and the three styles
 ```
 
-No layout XML by design — each screen is a single view, built in code.
+No *layout* XML by design — each screen is built in code. `theme.xml` is the one
+exception, because a theme cannot be declared any other way; it also holds the two
+colours, which `drawable/banner.xml` and `MainActivity` both reference.
+
+The parent is `Theme.Material`, not `Theme.DeviceDefault`: DeviceDefault is whatever
+the TV vendor skinned it into, so the app ships its own dark theme instead of
+inheriting a grey 2014 action bar from the panel.
 
 ## Deliberate shortcuts
 

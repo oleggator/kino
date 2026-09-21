@@ -24,7 +24,8 @@ First launch asks for the WebDAV URL, username and password. Leave the credentia
 blank if the server needs none. The first row of the root listing, `⚙ Server settings`,
 reopens that dialog.
 
-D-pad navigates, OK opens, Back goes up one directory. Playback position is remembered
+Dark theme of its own rather than the TV's, so it looks the same on any panel. D-pad
+navigates — the focused row is an accent block — OK opens, Back goes up one directory. Playback position is remembered
 per file and reset once a file is watched to the end.
 
 ## Checking passthrough

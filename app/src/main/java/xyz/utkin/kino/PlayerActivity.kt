@@ -14,10 +14,13 @@ import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -126,6 +129,17 @@ class PlayerActivity : Activity() {
         // Without this the app is silent in logcat: EventLogger is what prints the
         // chosen decoder, the audio sink configuration and every format change.
         player.addAnalyticsListener(EventLogger())
+
+        // Without this a codec the TV cannot decode, or a dead connection, is just a
+        // black screen forever. Same reasoning as the listing failure in MainActivity.
+        player.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                Log.w(TAG, "playback failed for $url", error)
+                val detail = error.cause?.message ?: error.message
+                Toast.makeText(this@PlayerActivity, "${error.errorCodeName}: $detail", Toast.LENGTH_LONG).show()
+                finish()
+            }
+        })
 
         val resumeMs = prefs.getLong(positionKey(), 0L)
         Log.i(TAG, "play $url from ${resumeMs}ms; ${sinkSummary()}")

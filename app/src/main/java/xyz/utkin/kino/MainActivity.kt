@@ -5,13 +5,24 @@ import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.os.Bundle
 import android.text.InputType
 import android.util.Log
+import android.util.StateSet
+import android.view.View
+import android.view.ViewGroup
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.TextView
 import android.widget.Toast
 import okhttp3.Credentials
 import okhttp3.HttpUrl
@@ -20,11 +31,17 @@ import okhttp3.OkHttpClient
 
 const val PREFS = "kino"
 
+/** textColorSecondary from the theme, for rows that are not files. */
+private const val SECONDARY = 0xFF9AA0A6.toInt()
+
 class MainActivity : Activity() {
 
     private val client = OkHttpClient()
     private lateinit var prefs: SharedPreferences
     private lateinit var list: ListView
+
+    /** The breadcrumb. There is no action bar to put it in, so it is a real view. */
+    private lateinit var pathView: TextView
 
     /** Breadcrumb. `stack.last()` is the directory currently on screen. */
     private val stack = ArrayList<HttpUrl>()
@@ -37,6 +54,13 @@ class MainActivity : Activity() {
         prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
         list = ListView(this)
+        // Dividers are 2014. The focus block below is what separates the rows now.
+        list.divider = null
+        list.dividerHeight = 0
+        list.selector = focusSelector()
+        list.setDrawSelectorOnTop(false)
+        list.clipToPadding = false
+        list.setPadding(0, dp(8), 0, dp(24))
         list.setOnItemClickListener { _, _, position, _ ->
             val entry = rows.getOrNull(position)
             when {
@@ -54,7 +78,34 @@ class MainActivity : Activity() {
                 }
             }
         }
-        setContentView(list)
+        pathView = TextView(this).apply {
+            textSize = 26f
+            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            setTextColor(Color.WHITE)
+        }
+
+        setContentView(
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                // TV safe area: panels overscan, and a list flush to the bezel loses rows.
+                setPadding(dp(48), dp(32), dp(48), 0)
+                addView(
+                    TextView(this@MainActivity).apply {
+                        text = "KINO"
+                        textSize = 13f
+                        letterSpacing = 0.25f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                        setTextColor(getColor(R.color.kino_accent))
+                    },
+                )
+                addView(
+                    pathView,
+                    LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+                        .apply { bottomMargin = dp(20) },
+                )
+                addView(list, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
+            },
+        )
 
         val root = savedServer()
         if (root == null) {
@@ -85,11 +136,13 @@ class MainActivity : Activity() {
     private fun load() {
         val url = stack.lastOrNull() ?: return
         val auth = auth()
-        title = url.encodedPath
+        // The action bar is the breadcrumb; the ellipsis is the whole loading indicator.
+        pathView.text = "${url.encodedPath} …"
         Thread {
             val result = runCatching { webdavList(client, url, auth) }
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
+                pathView.text = url.encodedPath
                 result
                     .onSuccess { render(it) }
                     .onFailure {
@@ -108,7 +161,17 @@ class MainActivity : Activity() {
         // the dialog even when the listing is empty or the credentials are wrong.
         rows = if (stack.size <= 1) listOf<Entry?>(null) + entries else entries
         val labels = rows.map { it?.label ?: "⚙  Server settings" }
-        list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, labels)
+        // simple_list_item_1 is a bare TextView at its root, so restyling what
+        // super.getView() hands back is the whole row design — no layout, no holder.
+        list.adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, labels) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
+                (super.getView(position, convertView, parent) as TextView).apply {
+                    textSize = 19f
+                    setPadding(dp(20), dp(14), dp(20), dp(14))
+                    // The ⚙ row is navigation, not content — dim it.
+                    setTextColor(if (rows.getOrNull(position) == null) SECONDARY else Color.WHITE)
+                }
+        }
     }
 
     private fun askForServer() {
@@ -152,6 +215,20 @@ class MainActivity : Activity() {
             .setNegativeButton("Cancel", null)
             .show()
     }
+
+    /** Accent block behind the focused row: the only cue a D-pad user gets. */
+    private fun focusSelector() = StateListDrawable().apply {
+        addState(
+            intArrayOf(android.R.attr.state_focused),
+            GradientDrawable().apply {
+                setColor(getColor(R.color.kino_accent) and 0x33FFFFFF)
+                cornerRadius = dp(10).toFloat()
+            },
+        )
+        addState(StateSet.WILD_CARD, ColorDrawable(Color.TRANSPARENT))
+    }
+
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     private fun editText(hintText: String, value: String?) = EditText(this).apply {
         hint = hintText
