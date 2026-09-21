@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -39,15 +41,19 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     // android.util.Log is a stub in JVM unit tests and throws "not mocked" by default.
     // parseMultistatus does not log today, but this keeps a future Log call from
     // breaking the tests in a confusing way.
     testOptions {
         unitTests.isReturnDefaultValues = true
+    }
+}
+
+// Top level, not inside `android {}`: kotlinOptions is deprecated in Kotlin 2.x in
+// favour of the compilerOptions DSL on the Kotlin extension.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 

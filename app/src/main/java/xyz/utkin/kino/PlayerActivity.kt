@@ -65,6 +65,17 @@ class PlayerActivity : Activity() {
         private const val FINISHED_SLACK_MS = 5_000L
     }
 
+    /**
+     * One instance, used twice on purpose: the player renders with these, and
+     * [sinkSummary] queries the sink with the same ones. Asking what the output
+     * accepts under different attributes than playback uses would be asking the
+     * wrong question.
+     */
+    private val audioAttributes = AudioAttributes.Builder()
+        .setUsage(C.USAGE_MEDIA)
+        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+        .build()
+
     private lateinit var prefs: SharedPreferences
     private lateinit var player: ExoPlayer
     private lateinit var debugView: TextView
@@ -83,13 +94,7 @@ class PlayerActivity : Activity() {
 
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                    .build(),
-                /* handleAudioFocus = */ true,
-            )
+            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
             .build()
 
         // PlayerView defaults to a SurfaceView, which is what HDR and tunneling want.
@@ -159,7 +164,18 @@ class PlayerActivity : Activity() {
      * bandwidth for TrueHD or DTS-HD MA; eARC does.
      */
     private fun sinkSummary(): String {
-        val caps = AudioCapabilities.getCapabilities(this)
+        // The four-argument overload is the only one not deprecated. It is routed-device
+        // aware, so it answers for the output actually in use rather than in general:
+        // null routedDevice means "whatever is currently routed", which is what we want.
+        // The last argument is spatializerChannelMasks — empty is exactly what the
+        // deprecated three-argument overload passed, and it is right here regardless,
+        // since the spatializer virtualises surround rather than passing a bitstream.
+        val caps = AudioCapabilities.getCapabilities(
+            this,
+            audioAttributes,
+            /* routedDevice = */ null,
+            /* spatializerChannelMasks = */ emptyList<Int>(),
+        )
         val supported = PASSTHROUGH_ENCODINGS.filterValues(caps::supportsEncoding).keys
         return "sink ${caps.maxChannelCount}ch | passthrough: " +
             if (supported.isEmpty()) "none (PCM only)" else supported.joinToString(" ")
