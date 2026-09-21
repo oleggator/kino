@@ -98,6 +98,7 @@ class PlayerActivity : Activity() {
         // beside it. Hidden by default, and media3 disables it when a file has no text
         // tracks, so there is nothing to handle for that case.
         playerView.setShowSubtitleButton(true)
+        playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
 
         debugView = TextView(this).apply {
             setTextColor(Color.WHITE)
