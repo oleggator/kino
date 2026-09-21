@@ -2,14 +2,13 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
     namespace = "xyz.utkin.kino"
-    // media3 1.11.1 requires its consumers to compile against 36 or later.
-    compileSdk = 36
+    // media3 1.11.1 requires 36 or later; compose 1.12 requires 37.
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "xyz.utkin.kino"
@@ -58,10 +57,7 @@ kotlin {
 }
 
 dependencies {
-    // Not the newest BOM on purpose: from compose 1.11 on, the artifacts demand
-    // compileSdk 37 and AGP 9.1. This one pins compose 1.10.5 / material3 1.4.0, all
-    // minCompileSdk=35, and 1.10.5 already satisfies what tv-material asks for.
-    implementation(platform("androidx.compose:compose-bom:2026.03.00"))
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.tv:tv-material:1.1.0")
     // tv-material ships no text field. Google's own TV guidance is to borrow
     // material3's for the few components TV Material does not have.
@@ -73,7 +69,7 @@ dependencies {
     // Only reason OkHttp is here: HttpURLConnection.setRequestMethod("PROPFIND")
     // throws ProtocolException, so the platform client cannot speak WebDAV.
     // Playback uses media3's own DefaultHttpDataSource.
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
 
     testImplementation("junit:junit:4.13.2")
 }

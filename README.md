@@ -8,8 +8,9 @@ DTS audio go to the soundbar as an untouched bitstream.
 ## Requirements
 
 - Android TV, minSdk 24. Developed against Android 14 on a TCL Smart TV Pro.
-- Android SDK `platforms;android-36` and `build-tools;35.0.0`.
-- JDK 21 — AGP 8.10 rejects newer. Pinned in `gradle.properties`.
+- Android SDK `platforms;android-37.0` and `build-tools;36.0.0`. AGP 9 addresses
+  platforms by minor version, so the directory really is `android-37.0`.
+- JDK 21 — AGP rejects newer. Pinned in `gradle.properties`.
 
 ## Build
 

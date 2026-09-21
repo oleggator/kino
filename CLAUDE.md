@@ -26,11 +26,21 @@ not written here is one that cannot get between the bitstream and the soundbar.
   `isExpandEntityReferences = false` plus an `EntityResolver` returning an empty
   `InputSource`; both work on either platform. Pinned by the
   `external entities are not resolved` test.
-- `compileSdk = 36` is required by media3 1.11.1. Do **not** move the Compose BOM past
-  `2026.03.00` (compose 1.10.5): from compose 1.11 on, the artifacts demand
-  `compileSdk = 37` and AGP 9.1, and the build fails outright.
-- The Compose compiler version is not a free choice — `org.jetbrains.kotlin.plugin.compose`
-  must equal the Kotlin version. Since Kotlin 2.0 there is no `composeOptions` block.
+- Every AAR carries an `aar-metadata.properties` declaring `minCompileSdk` **and**
+  `minAndroidGradlePluginVersion` — two independent gates, both hard failures, and the
+  AGP one cannot be suppressed. That pair is what dictates `compileSdk = 37` here
+  (compose 1.12 demands 37 and AGP 9.1). Read the metadata rather than release notes:
+  `unzip -p <artifact>.aar META-INF/com/android/build/gradle/aar-metadata.properties`
+- **AGP 9 has Kotlin built in.** Applying `org.jetbrains.kotlin.android` alongside it
+  is a hard error telling you to remove it. Only `org.jetbrains.kotlin.plugin.compose`
+  is applied, and its version selects the Kotlin toolchain.
+- AGP 9 addresses SDK platforms by **minor** version: it looks for
+  `platforms;android-37.0`, not `android-37`, and a directory named the old way is
+  simply not found. Its default build-tools is tied to the AGP version (36.0.0 for
+  9.4.x), not to `compileSdk`.
+- A hand-installed SDK package needs a `package.xml` beside its `source.properties`,
+  or AGP reports it missing however correct the files are. `sdkmanager` writes that
+  file; unzipping the archive yourself does not.
 - `Text`, `Button`, `Surface`, `MaterialTheme` and `darkColorScheme` exist in **both**
   `androidx.tv.material3` and `androidx.compose.material3`. The TV ones are imported
   plainly; the other two are aliased `M3Theme` / `m3DarkColorScheme` so the collision
@@ -42,8 +52,8 @@ not written here is one that cannot get between the bitstream and the soundbar.
 - Nothing is focused by default in Compose, which on a TV means the D-pad does nothing
   at all. `FocusRequester` on the first row, re-fired per directory, is not optional.
 - `LocalBringIntoViewSpec`, the CompositionLocal usually reached for to pivot the
-  focused row away from the screen edge, is not in the foundation this resolves
-  (1.10.5) and is gone from 1.12.1 as well. `contentPadding` on the `LazyColumn` does
+  focused row away from the screen edge, does not exist in the foundation this
+  resolves (1.12.1). `contentPadding` on the `LazyColumn` does
   that job here.
 - **Compose skips on identity, not equality, for unstable parameter types.** `List` is
   unstable, so a list rebuilt during composition and passed down makes the callee and
@@ -59,9 +69,7 @@ not written here is one that cannot get between the bitstream and the soundbar.
   `spatializerChannelMasks`; empty is what the deprecated overload passed, and it is
   right here anyway — the spatializer virtualises surround rather than passing a
   bitstream through.
-- The Kotlin plugin must be at least the `kotlin-stdlib` version media3 and okhttp
-  resolve to (2.2.10), or the compiler rejects their metadata.
-- JDK 21. The machine default may be newer, and AGP 8.10 rejects it.
+- JDK 21. The machine default may be newer, and AGP rejects it.
 - `HttpURLConnection.setRequestMethod("PROPFIND")` throws `ProtocolException`. That is
   the only reason OkHttp is a dependency — playback uses media3's own
   `DefaultHttpDataSource`.

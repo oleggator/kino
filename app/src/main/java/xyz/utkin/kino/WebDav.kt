@@ -55,7 +55,7 @@ fun webdavList(client: OkHttpClient, url: HttpUrl, auth: String): List<Entry> {
         }
         // Bytes, not a String: let the parser honour the XML prolog's encoding rather
         // than re-encoding whatever charset OkHttp guessed from the Content-Type.
-        val body = response.body?.bytes() ?: ByteArray(0)
+        val body = response.body.bytes()
         val entries = parseMultistatus(body, url)
         Log.i(TAG, "  -> HTTP ${response.code}, ${body.size} bytes, ${entries.size} entries")
         return entries
