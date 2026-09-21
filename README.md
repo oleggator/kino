@@ -10,7 +10,7 @@ DTS audio go to the soundbar as an untouched bitstream.
 - Android TV, minSdk 24. Developed against Android 14 on a TCL Smart TV Pro.
 - Android SDK `platforms;android-37.0` and `build-tools;36.0.0`. AGP 9 addresses
   platforms by minor version, so the directory really is `android-37.0`.
-- JDK 21 — AGP rejects newer. Pinned in `gradle.properties`.
+- JDK 17 or newer. Built and tested here on 21 and 26.
 
 ## Build
 
@@ -20,7 +20,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
 Use `assembleRelease`, not `assembleDebug`. The release build type flips two
-independent switches: R8, which takes the APK from 15 MB to 3 MB, and
+independent switches: R8, which takes the APK from 16 MB to 2.3 MB, and
 `debuggable = false`, which is what makes Compose smooth on a TV. Judging Compose
 performance from a debug build measures neither. Release is signed with the debug key,
 so it installs over a debug build.

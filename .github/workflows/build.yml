@@ -23,17 +23,10 @@ jobs:
       # Handles the Gradle distribution and the dependency cache.
       - uses: gradle/actions/setup-gradle@v6
 
-      # gradle.properties pins org.gradle.java.home to an Arch Linux path, so that a
-      # machine whose default JDK is newer than 21 does not hand AGP 8.10 a JVM it
-      # rejects. That path does not exist on the runner, and setup-java has already
-      # put JDK 21 on JAVA_HOME, so drop the pin rather than fight it.
-      - name: Unpin the local JDK path
-        run: sed -i '/^org\.gradle\.java\.home=/d' gradle.properties
-
-      # assembleRelease rather than Debug: R8 runs, which is the difference between a
-      # 15 MB APK that stutters on a TV and a 3 MB one that does not. It signs with the
-      # debug key, which the runner generates fresh each time — so a CI build installs
-      # over a previous CI build, but not over one built locally.
+      # assembleRelease rather than Debug, for two separate reasons: R8 runs (16 MB ->
+      # 2.3 MB) and debuggable is off, which is what makes Compose smooth on a TV. It
+      # signs with the debug key, which the runner generates fresh each time — so a CI
+      # build installs over a previous CI build, but not over one built locally.
       - run: ./gradlew test assembleRelease
 
       # archive: false (v7+) uploads the APK as-is rather than wrapping it in a zip,

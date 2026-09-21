@@ -75,7 +75,6 @@ not written here is one that cannot get between the bitstream and the soundbar.
   `spatializerChannelMasks`; empty is what the deprecated overload passed, and it is
   right here anyway — the spatializer virtualises surround rather than passing a
   bitstream through.
-- JDK 21. The machine default may be newer, and AGP rejects it.
 - `HttpURLConnection.setRequestMethod("PROPFIND")` throws `ProtocolException`. That is
   the only reason OkHttp is a dependency — playback uses media3's own
   `DefaultHttpDataSource`.
@@ -89,13 +88,11 @@ not written here is one that cannot get between the bitstream and the soundbar.
 ```
 
 Release, not debug. Two independent things come with it: R8, which takes the APK from
-15 MB to 3 MB, and `debuggable = false`, which is what makes Compose smooth on a TV.
+16 MB to 2.3 MB, and `debuggable = false`, which is what makes Compose smooth on a TV.
 Release is signed with the debug key — this is a sideloaded app, never published — so
 it installs over a debug build.
 
-`.github/workflows/build.yml` runs the same two tasks. It deletes the
-`org.gradle.java.home` line from `gradle.properties` first, because that path exists on
-one machine only and the runner's JDK 21 is already on `JAVA_HOME`.
+`.github/workflows/build.yml` runs the same two tasks and attaches the APK unzipped.
 
 `WebDavTest` is a plain JVM test. `parseMultistatus` uses `javax.xml` DOM specifically
 so it runs with no Robolectric and no extra dependency — keep it that way. One of its
