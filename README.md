@@ -14,9 +14,17 @@ DTS audio go to the soundbar as an untouched bitstream.
 ## Build
 
 ```
-./gradlew test assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+./gradlew test assembleRelease
+adb install -r app/build/outputs/apk/release/app-release.apk
 ```
+
+Use `assembleRelease`, not `assembleDebug`. R8 only runs on release, and it is the
+difference between a 15 MB APK that stutters on a TV and a 3 MB one that does not.
+Release is signed with the debug key, so it installs over a debug build.
+
+`.github/workflows/build.yml` runs the same two tasks on every push and attaches the
+APK to the run. Its APKs are signed with a keystore the runner generates fresh each
+time, so they install over each other but not over a locally built one.
 
 ## Use
 

@@ -1,0 +1,55 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Handles the Gradle distribution and the dependency cache.
+      - uses: gradle/actions/setup-gradle@v6
+
+      # gradle.properties pins org.gradle.java.home to an Arch Linux path, so that a
+      # machine whose default JDK is newer than 21 does not hand AGP 8.10 a JVM it
+      # rejects. That path does not exist on the runner, and setup-java has already
+      # put JDK 21 on JAVA_HOME, so drop the pin rather than fight it.
+      - name: Unpin the local JDK path
+        run: sed -i '/^org\.gradle\.java\.home=/d' gradle.properties
+
+      # assembleRelease rather than Debug: R8 runs, which is the difference between a
+      # 15 MB APK that stutters on a TV and a 3 MB one that does not. It signs with the
+      # debug key, which the runner generates fresh each time — so a CI build installs
+      # over a previous CI build, but not over one built locally.
+      - run: ./gradlew test assembleRelease
+
+      # archive: false (v7+) uploads the APK as-is rather than wrapping it in a zip,
+      # so the download is installable straight away. It takes a single file only, and
+      # that file's own name becomes the artifact name — `name` is ignored here, which
+      # is why it is not set. The artifact appears on the run as app-release.apk.
+      - uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/apk/release/app-release.apk
+          archive: false
+          if-no-files-found: error
+
+      # Left zipped: this one is a directory, which archive: false cannot take.
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-report
+          path: app/build/reports/tests/
