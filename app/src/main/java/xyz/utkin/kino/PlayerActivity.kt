@@ -144,9 +144,15 @@ class PlayerActivity : Activity() {
     }
 
     private fun openPlayer() {
+        // The Authorization header is a *default* request property, so it is sent on
+        // every connection this data source opens — including a redirect target. Cross
+        // protocol redirects are off for that reason: allowing them lets an https URL
+        // redirect to http and carry the password in clear. A same-protocol redirect to
+        // another host still takes the header with it; stripping that would need a
+        // custom DataSource, which is exactly what this project does not do.
         val http = DefaultHttpDataSource.Factory()
             .setDefaultRequestProperties(mapOf("Authorization" to basicAuth()))
-            .setAllowCrossProtocolRedirects(true)
+            .setAllowCrossProtocolRedirects(false)
 
         val p = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))

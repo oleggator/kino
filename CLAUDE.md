@@ -77,7 +77,9 @@ not written here is one that cannot get between the bitstream and the soundbar.
   bitstream through.
 - `HttpURLConnection.setRequestMethod("PROPFIND")` throws `ProtocolException`. That is
   the only reason OkHttp is a dependency — playback uses media3's own
-  `DefaultHttpDataSource`.
+  `DefaultHttpDataSource`. Note the two behave differently on redirects: OkHttp drops
+  `Authorization` when the host changes, `DefaultHttpDataSource` does not, which is why
+  cross-protocol redirects are disabled there.
 - `PlayerView` paints only the video rectangle. Letterbox bars show whatever is behind
   it, hence the explicit black on the root view and the window.
 
