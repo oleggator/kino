@@ -21,9 +21,17 @@ private const val DAV = "DAV:"
 private val XML = "application/xml; charset=utf-8".toMediaType()
 
 // ponytail: extension sniffing, because servers report getcontenttype wrong far more
-// often than people name a video something exotic. Add to the set when bitten.
-private val VIDEO_EXTENSIONS =
-    setOf("mkv", "mp4", "m4v", "ts", "m2ts", "webm", "avi", "mov")
+// often than people name a file something exotic. Add to the set when bitten.
+//
+// The audio half is every container media3 1.11.1 ships an extractor for. Two that
+// look like they belong are missing on purpose: `.dts`, because there is no raw DTS
+// extractor (DTS arrives inside MKV or TS instead), and `.mid`, because the MIDI
+// extractor lives in media3-exoplayer-midi, which this app does not depend on.
+private val PLAYABLE_EXTENSIONS = setOf(
+    "mkv", "mp4", "m4v", "ts", "m2ts", "webm", "avi", "mov",
+    "m4a", "m4b", "mka", "mp3", "flac", "wav", "ogg", "oga", "opus",
+    "aac", "ac3", "eac3", "ec3", "ac4", "amr",
+)
 
 private const val PROPFIND_BODY =
     """<?xml version="1.0" encoding="utf-8"?>""" +
@@ -77,7 +85,7 @@ internal fun parseMultistatus(xml: ByteArray, base: HttpUrl): List<Entry> {
 
         val isDir = response.getElementsByTagNameNS(DAV, "collection").length > 0
         val name = resolved.pathSegments.lastOrNull { it.isNotEmpty() } ?: continue
-        if (!isDir && name.substringAfterLast('.', "").lowercase() !in VIDEO_EXTENSIONS) continue
+        if (!isDir && name.substringAfterLast('.', "").lowercase() !in PLAYABLE_EXTENSIONS) continue
 
         entries.add(Entry(name, resolved, isDir))
     }
