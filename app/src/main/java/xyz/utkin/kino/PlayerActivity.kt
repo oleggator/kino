@@ -12,6 +12,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -21,6 +22,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -28,6 +30,7 @@ import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.util.DebugTextViewHelper
 import androidx.media3.exoplayer.util.EventLogger
+import androidx.media3.extractor.metadata.Chapter
 import androidx.media3.ui.PlayerView
 import okhttp3.Credentials
 
@@ -41,6 +44,16 @@ private val PASSTHROUGH_ENCODINGS = linkedMapOf(
     "DTS-HD" to C.ENCODING_DTS_HD,
     "DTS:X" to C.ENCODING_DTS_UHD_P2,
     "AC4" to C.ENCODING_AC4,
+)
+
+/**
+ * Chapter titles worth offering to skip. Matroska chapter names are free text, so this
+ * is a guess at what encoders actually write; the word boundaries stop "OP" matching
+ * "Stop". A file with no chapters, or none named like these, never shows the button.
+ */
+private val SKIPPABLE_CHAPTER = Regex(
+    """\b(op|ed|intro|opening|ending|credits|outro|recap|preview)\b""",
+    RegexOption.IGNORE_CASE,
 )
 
 /**
@@ -63,6 +76,9 @@ class PlayerActivity : Activity() {
 
         /** Within this of the end, treat the file as finished and restart it next time. */
         private const val FINISHED_SLACK_MS = 5_000L
+
+        /** How often the skip button re-checks where playback is. */
+        private const val SKIP_POLL_MS = 500L
     }
 
     /**
@@ -79,7 +95,11 @@ class PlayerActivity : Activity() {
     private lateinit var prefs: SharedPreferences
     private lateinit var playerView: PlayerView
     private lateinit var debugView: TextView
+    private lateinit var skipButton: Button
     private lateinit var url: String
+
+    private var skips: List<Skip> = emptyList()
+    private var skipToMs = 0L
 
     // Nullable, not lateinit: these exist only between onStart and onStop, and
     // `isInitialized` would still be true for a released player.
@@ -102,6 +122,14 @@ class PlayerActivity : Activity() {
         playerView.setShowSubtitleButton(true)
         playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
 
+        skipButton = Button(this).apply {
+            visibility = View.GONE
+            setOnClickListener {
+                player?.seekTo(skipToMs)
+                hideSkip()
+            }
+        }
+
         debugView = TextView(this).apply {
             setTextColor(Color.WHITE)
             setBackgroundColor(0x99000000.toInt())
@@ -120,6 +148,16 @@ class PlayerActivity : Activity() {
                 addView(
                     debugView,
                     FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.START),
+                )
+                addView(
+                    skipButton,
+                    FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.END).apply {
+                        val density = resources.displayMetrics.density
+                        marginEnd = (48 * density).toInt()
+                        // Clear of media3's control bar, so the two never overlap when
+                        // the controller happens to be up during an intro.
+                        bottomMargin = (120 * density).toInt()
+                    },
                 )
             },
         )
@@ -171,6 +209,11 @@ class PlayerActivity : Activity() {
         // Without this a codec the TV cannot decode, or a dead connection, is just a
         // black screen forever. Same reasoning as the listing failure in MainActivity.
         p.addListener(object : Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) {
+                skips = skipsFrom(tracks, p.duration)
+                Log.i(TAG, "skippable chapters: ${skips.map(Skip::label)}")
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 Log.w(TAG, "playback failed for $url", error)
                 val detail = error.cause?.message ?: error.message
@@ -184,16 +227,57 @@ class PlayerActivity : Activity() {
         p.setMediaItem(MediaItem.fromUri(url), resumeMs)
         p.playWhenReady = true
         p.prepare()
+
+        skipButton.post(skipTick)
     }
 
     private fun releasePlayer() {
         val p = player ?: return
+        skipButton.removeCallbacks(skipTick)
+        hideSkip()
+        skips = emptyList()
         savePosition()
         debug?.stop()
         debug = null
         playerView.player = null
         p.release()
         player = null
+    }
+
+    /**
+     * ponytail: a 500ms poll rather than an ExoPlayer position message. Two of those
+     * (enter and leave) per skippable chapter, re-armed on every seek, is more moving
+     * parts than a timer that costs one list scan twice a second.
+     */
+    private val skipTick = object : Runnable {
+        override fun run() {
+            updateSkip()
+            skipButton.postDelayed(this, SKIP_POLL_MS)
+        }
+    }
+
+    private fun updateSkip() {
+        val position = player?.currentPosition ?: return
+        val skip = skips.firstOrNull { position >= it.startMs && position < it.endMs }
+        if (skip == null) {
+            hideSkip()
+            return
+        }
+        skipToMs = skip.endMs
+        if (skipButton.visibility != View.VISIBLE) {
+            skipButton.text = "Skip ${skip.label}"
+            skipButton.visibility = View.VISIBLE
+            // One OK press should skip, so take focus -- but not out from under the
+            // controller, where the user is already driving something else.
+            if (!playerView.isControllerFullyVisible) skipButton.requestFocus()
+        }
+    }
+
+    private fun hideSkip() {
+        if (skipButton.visibility == View.VISIBLE) {
+            skipButton.visibility = View.GONE
+            playerView.requestFocus()
+        }
     }
 
     private inner class SinkAwareDebug(p: ExoPlayer, v: TextView) : DebugTextViewHelper(p, v) {
@@ -257,4 +341,35 @@ class PlayerActivity : Activity() {
         prefs.getString("user", "").orEmpty(),
         prefs.getString("pass", "").orEmpty(),
     )
+}
+
+/** A chapter we are willing to jump over, with the end time already resolved. */
+private class Skip(val label: String, val startMs: Long, val endMs: Long)
+
+/**
+ * Matroska chapters arrive as [Chapter] entries on every track's `Format.metadata` --
+ * the extractor attaches a chapter to one track when it names a track UID, and to all
+ * of them when it does not, hence the `distinct`.
+ */
+private fun skipsFrom(tracks: Tracks, durationMs: Long): List<Skip> {
+    val all = tracks.groups.asSequence()
+        .flatMap { group -> (0 until group.length).asSequence().map(group::getTrackFormat) }
+        .mapNotNull { it.metadata }
+        .flatMap { metadata -> (0 until metadata.length()).asSequence().map(metadata::get) }
+        .filterIsInstance<Chapter>()
+        .distinct()
+        .sortedBy { it.startTimeMs }
+        .toList()
+
+    return all.mapIndexedNotNull { i, chapter ->
+        val label = chapter.title?.value.orEmpty()
+        if (chapter.isHidden || !SKIPPABLE_CHAPTER.containsMatchIn(label)) return@mapIndexedNotNull null
+        // ChapterTimeEnd is optional in Matroska, and most muxers leave it out: a
+        // chapter that has none runs until the next one starts.
+        val end = chapter.endTimeMs
+            .takeIf { it > chapter.startTimeMs }
+            ?: all.getOrNull(i + 1)?.startTimeMs
+            ?: durationMs
+        Skip(label, chapter.startTimeMs, end).takeIf { it.endMs > it.startMs }
+    }
 }
