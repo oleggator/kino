@@ -1,11 +1,14 @@
 package xyz.utkin.kino
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
@@ -24,16 +27,25 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.TransferListener
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultAllocator
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.util.DebugTextViewHelper
 import androidx.media3.exoplayer.util.EventLogger
 import androidx.media3.extractor.metadata.Chapter
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
 import okhttp3.Credentials
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
 
 /** Probed against the sink so the overlay can name what this TV + soundbar will take. */
 private val PASSTHROUGH_ENCODINGS = linkedMapOf(
@@ -87,6 +99,25 @@ class PlayerActivity : Activity() {
         // backing up over a line you missed.
         private const val SEEK_FORWARD_MS = 30_000L
         private const val SEEK_BACK_MS = 10_000L
+
+        // Share of the app's heap to spend on the media buffer. A third, where the Plex
+        // TV app takes a fifth -- Plex keeps poster caches and a browse UI resident, this
+        // app keeps a stopped Compose tree and an okhttp client.
+        //
+        // No upper clamp: the allocator grows on demand rather than reserving, and
+        // DefaultLoadControl stops at DEFAULT_MAX_BUFFER_MS (50s) regardless, so a
+        // generous ceiling costs nothing on a file that never reaches it and an absolute
+        // cap would only bind on the large-heap devices that can best afford it. The
+        // floor is roughly what media3 would have picked anyway, so a small-heap box is
+        // never made worse than the default.
+        private const val BUFFER_HEAP_FRACTION = 3
+        private const val BUFFER_MIN_MB = 32
+
+        /** Gap after which the download-rate baseline is treated as stale, not a sample. */
+        private const val SAMPLE_STALE_MS = 3_000L
+
+        /** Buffering this soon after a seek is the seek's doing, not a starved buffer. */
+        private const val SEEK_SETTLE_MS = 1_000L
     }
 
     /**
@@ -113,6 +144,43 @@ class PlayerActivity : Activity() {
     // Nullable, not lateinit: these exist only between onStart and onStop, and
     // `isInitialized` would still be true for a released player.
     private var player: ExoPlayer? = null
+
+    // Built here rather than left to DefaultLoadControl so the INFO overlay can ask it
+    // how full it is. 64KB segments is what media3 and Plex both use.
+    private var allocator: DefaultAllocator? = null
+    private var targetBufferBytes = 0
+
+    /**
+     * Everything that comes off the socket, which [sampleRates] differences to get the
+     * download rate. Written on the loader thread and read on the main one, hence the
+     * atomic.
+     */
+    private val bytesTransferred = AtomicLong()
+    private var contentLengthBytes = 0L
+
+    // Baseline for the rate sample, and the two smoothed results.
+    private var sampledAtMs = 0L
+    private var sampledBytes = 0L
+    private var downBps = 0L
+
+    // Cumulative, so a stall that happened while you were watching the film rather than
+    // the overlay still shows up afterwards.
+    private var stalls = 0
+    private var stalledMs = 0L
+    private var stalledSinceMs = 0L
+    private var wasReady = false
+    private var seekedAtMs = 0L
+
+    private val byteCounter = object : TransferListener {
+        override fun onTransferInitializing(source: DataSource, spec: DataSpec, isNetwork: Boolean) = Unit
+        override fun onTransferStart(source: DataSource, spec: DataSpec, isNetwork: Boolean) {
+            if (contentLengthBytes == 0L) contentLengthBytes = totalLength(source)
+        }
+        override fun onTransferEnd(source: DataSource, spec: DataSpec, isNetwork: Boolean) = Unit
+        override fun onBytesTransferred(source: DataSource, spec: DataSpec, isNetwork: Boolean, count: Int) {
+            bytesTransferred.addAndGet(count.toLong())
+        }
+    }
     private var debug: DebugTextViewHelper? = null
     private var debugOn = false
 
@@ -205,9 +273,29 @@ class PlayerActivity : Activity() {
         val http = DefaultHttpDataSource.Factory()
             .setDefaultRequestProperties(mapOf("Authorization" to basicAuth()))
             .setAllowCrossProtocolRedirects(false)
+            .setTransferListener(byteCounter)
+
+        bytesTransferred.set(0)
+        contentLengthBytes = 0L
+        sampledAtMs = 0L
+        downBps = 0L
+        stalls = 0
+        stalledMs = 0L
+        stalledSinceMs = 0L
+        wasReady = false
+        seekedAtMs = 0L
+        targetBufferBytes = targetBufferBytes()
+        val bufferAllocator = DefaultAllocator(true, 64 * 1024)
+        allocator = bufferAllocator
 
         val p = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))
+            .setLoadControl(
+                DefaultLoadControl.Builder()
+                    .setAllocator(bufferAllocator)
+                    .setTargetBufferBytes(targetBufferBytes)
+                    .build(),
+            )
             .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
             // The controller's rewind/fast-forward buttons default to 5s/15s; match the
             // seek bar so the two controls do not disagree about what a skip is.
@@ -232,6 +320,34 @@ class PlayerActivity : Activity() {
                 Log.i(TAG, "skippable chapters: ${skips.map(Skip::label)}")
             }
 
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                // A seek buffers by definition; that is not the network failing to keep
+                // up. Recorded as a time rather than a flag because a seek that lands
+                // inside the buffer never changes playback state, so a flag would stay
+                // set and swallow the next real stall.
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                    seekedAtMs = SystemClock.elapsedRealtime()
+                }
+            }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                val atMs = SystemClock.elapsedRealtime()
+                val fromSeek = atMs - seekedAtMs < SEEK_SETTLE_MS
+                if (state == Player.STATE_BUFFERING && wasReady && !fromSeek) {
+                    stalls++
+                    stalledSinceMs = atMs
+                }
+                if (state == Player.STATE_READY && stalledSinceMs > 0) {
+                    stalledMs += atMs - stalledSinceMs
+                    stalledSinceMs = 0L
+                }
+                wasReady = state == Player.STATE_READY
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 Log.w(TAG, "playback failed for $url", error)
                 val detail = error.cause?.message ?: error.message
@@ -241,7 +357,7 @@ class PlayerActivity : Activity() {
         })
 
         val resumeMs = prefs.getLong(positionKey(), 0L)
-        Log.i(TAG, "play $url from ${resumeMs}ms; ${sinkSummary()}")
+        Log.i(TAG, "play $url from ${resumeMs}ms; buffer ${targetBufferBytes shr 20}MB; ${sinkSummary()}")
         p.setMediaItem(MediaItem.fromUri(url), resumeMs)
         p.playWhenReady = true
         p.prepare()
@@ -260,6 +376,7 @@ class PlayerActivity : Activity() {
         playerView.player = null
         p.release()
         player = null
+        allocator = null
     }
 
     /**
@@ -299,7 +416,109 @@ class PlayerActivity : Activity() {
     }
 
     private inner class SinkAwareDebug(p: ExoPlayer, v: TextView) : DebugTextViewHelper(p, v) {
-        override fun getDebugString() = super.getDebugString() + "\n" + sinkSummary()
+        override fun getDebugString() =
+            super.getDebugString() + "\n" + bufferSummary() + "\n" + netSummary() +
+                "\n" + sinkSummary()
+    }
+
+    /**
+     * How far ahead playback is covered, in both of the units that can stop the loading:
+     * seconds against DefaultLoadControl's 50s target, and bytes against [targetBufferBytes].
+     * Whichever is closer to its limit is the one holding the buffer back.
+     */
+    private fun bufferSummary(): String {
+        val ahead = player?.totalBufferedDuration ?: 0L
+        // Bytes the allocator holds, which lags what is actually in use until it trims.
+        val used = allocator?.totalBytesAllocated ?: 0
+        val stalled = if (stalledMs > 0) " ${stalledMs / 1000}s" else ""
+        return "buffer ${ahead / 1000}s | ${used shr 20}/${targetBufferBytes shr 20}MB | " +
+            "$stalls stalls$stalled"
+    }
+
+    /**
+     * `down` is real throughput: bytes over wall time, so idle intervals count against
+     * it and it falls toward zero when the buffer is full. That is not a broken reading
+     * -- the loader only goes flat out when the buffer needs filling, which is exactly
+     * when the number matters.
+     *
+     * `est` is media3's own capacity estimate, and it is labelled estimated because it
+     * is not live: DefaultBandwidthMeter recomputes only inside onTransferEnd, and only
+     * once a sample passes its thresholds, so with a full buffer there is nothing to
+     * measure and it holds its last value. It is what the link managed when last asked.
+     *
+     * `file` is what the link has to beat: the whole file over its whole duration, the
+     * number mediainfo calls overall bitrate. It needs the size, so it is absent from a
+     * server that sends no length.
+     */
+    private fun netSummary(): String {
+        sampleRates()
+        val estimate = DefaultBandwidthMeter.getSingletonInstance(this).bitrateEstimate
+        val durationMs = player?.duration ?: 0L
+        val file = if (contentLengthBytes > 0 && durationMs > 0) {
+            " | ${mbps(contentLengthBytes * 8_000 / durationMs)} file"
+        } else {
+            ""
+        }
+        return "net ${mbps(downBps)} down | ${mbps(estimate)} est$file"
+    }
+
+    /**
+     * Called once per overlay refresh, which is DebugTextViewHelper's one second. A
+     * hidden overlay leaves a stale baseline, so that gap is dropped rather than turned
+     * into a wrong number.
+     */
+    private fun sampleRates() {
+        val atMs = SystemClock.elapsedRealtime()
+        val bytes = bytesTransferred.get()
+        val elapsedMs = atMs - sampledAtMs
+        if (sampledAtMs > 0 && elapsedMs in 1L..SAMPLE_STALE_MS) {
+            downBps = smooth(downBps, (bytes - sampledBytes) * 8_000 / elapsedMs)
+        }
+        sampledAtMs = atMs
+        sampledBytes = bytes
+    }
+
+    /** A one second window on VBR video swings too hard to read without this. */
+    private fun smooth(current: Long, sample: Long) =
+        if (current == 0L) sample else (current * 3 + sample) / 4
+
+    private fun mbps(bitsPerSecond: Long) =
+        String.format(Locale.US, "%.1f Mbps", bitsPerSecond / 1_000_000.0)
+
+    /**
+     * Total size of the file. A resumed file opens with a Range request, where
+     * Content-Length is only the remainder and Content-Range carries the real total, so
+     * that one wins when it is present. Header names are matched case-insensitively
+     * rather than trusting the map's comparator.
+     */
+    private fun totalLength(source: DataSource): Long {
+        val headers = (source as? HttpDataSource)?.responseHeaders ?: return 0L
+        fun header(name: String) = headers.entries
+            .firstOrNull { it.key?.equals(name, ignoreCase = true) == true }
+            ?.value?.firstOrNull()
+        header("Content-Range")?.substringAfterLast('/', "")?.toLongOrNull()?.let { return it }
+        return header("Content-Length")?.toLongOrNull() ?: 0L
+    }
+
+    /**
+     * media3 picks a buffer profile from the URI scheme, and `http://` is not in its
+     * LOCAL_PLAYBACK_SCHEMES, so this gets the streaming one: about 19MB for video plus
+     * 13MB for audio. Bytes run out before the 50s duration target does, which on a
+     * 60 Mbps remux is roughly four seconds of cover. Raising the ceiling lets the
+     * duration target be what stops the loading instead.
+     *
+     * Sized from the heap rather than fixed because DefaultAllocator allocates on the
+     * Java heap, and read from largeMemoryClass because the manifest asks for the large
+     * heap -- on a TV that is usually 512MB against a 192MB ordinary one, and buffering
+     * a 60 Mbps remux is the case the large heap exists for. The flag is checked rather
+     * than assumed: largeMemoryClass reports the bigger number whether or not the app
+     * actually asked for it.
+     */
+    private fun targetBufferBytes(): Int {
+        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val largeHeap = applicationInfo.flags and ApplicationInfo.FLAG_LARGE_HEAP != 0
+        val heapMb = if (largeHeap) activityManager.largeMemoryClass else activityManager.memoryClass
+        return (heapMb / BUFFER_HEAP_FRACTION).coerceAtLeast(BUFFER_MIN_MB) shl 20
     }
 
     /**
