@@ -409,10 +409,14 @@ class PlayerActivity : Activity() {
     }
 
     private fun hideSkip() {
-        if (skipButton.visibility == View.VISIBLE) {
-            skipButton.visibility = View.GONE
-            playerView.requestFocus()
-        }
+        if (skipButton.visibility != View.VISIBLE) return
+        // Only hand focus back if we had it. Hiding a view that is focused leaves the
+        // window with nothing focused, so that case has to be handled -- but the button
+        // does not take focus while the controller is up, and yanking it away from
+        // whatever the user was on there would be the bug this avoids.
+        val hadFocus = skipButton.hasFocus()
+        skipButton.visibility = View.GONE
+        if (hadFocus) playerView.requestFocus()
     }
 
     private inner class SinkAwareDebug(p: ExoPlayer, v: TextView) : DebugTextViewHelper(p, v) {

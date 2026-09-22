@@ -27,7 +27,7 @@ private val VIDEO_EXTENSIONS =
 
 private const val PROPFIND_BODY =
     """<?xml version="1.0" encoding="utf-8"?>""" +
-        """<propfind xmlns="DAV:"><prop><resourcetype/><getcontentlength/></prop></propfind>"""
+        """<propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>"""
 
 data class Entry(val name: String, val url: HttpUrl, val isDir: Boolean) {
     val label: String get() = if (isDir) "$name/" else name

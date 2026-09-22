@@ -1,12 +1,14 @@
 # Kino
 
-Minimal Android TV WebDAV Direct Play client. ~700 lines of Kotlin across three
+Minimal Android TV WebDAV Direct Play client. ~1100 lines of Kotlin across three
 source files, six dependencies, no layout XML.
 
 ## The design premise — do not "improve" this
 
-Playback is **stock media3**: `ExoPlayer.Builder(context).build()` with the default
-`RenderersFactory`. That is deliberate, and it is the whole point of the project.
+Playback is **stock media3 where it counts**: the default `RenderersFactory`, the
+default `MediaCodecAudioRenderer`, the default `DefaultAudioSink`. Nothing the app
+writes sits between the container and the `AudioTrack`. That is deliberate, and it is
+the whole point of the project.
 
 Dolby and DTS passthrough work because `MediaCodecAudioRenderer` runs in bypass mode
 and `DefaultAudioSink` opens an `AudioTrack` with `ENCODING_E_AC3` / `_AC3` /
@@ -18,6 +20,10 @@ Do not add a custom `RenderersFactory`, a hand-built `AudioCapabilities`, or an 
 layer. Those exist in Plex to correct firmware that misreports its own capabilities on
 specific devices. This app targets one modern TV and trusts the platform. Every line
 not written here is one that cannot get between the bitstream and the soundbar.
+
+What *is* configured is downstream of none of that: a heap-sized `DefaultLoadControl`
+(buffering), the D-pad seek increments, and one `AudioAttributes` instance shared by
+playback and the overlay's sink probe, so the two ask the output the same question.
 
 ## Android gotchas already paid for
 
@@ -80,6 +86,23 @@ not written here is one that cannot get between the bitstream and the soundbar.
   `DefaultHttpDataSource`. Note the two behave differently on redirects: OkHttp drops
   `Authorization` when the host changes, `DefaultHttpDataSource` does not, which is why
   cross-protocol redirects are disabled there.
+- **media3 picks its buffer profile from the URI scheme.** `http://` is not in
+  `LOCAL_PLAYBACK_SCHEMES`, so streaming gets ~19 MB video + ~13 MB audio — about four
+  seconds of a 60 Mbps remux, and bytes run out long before the 50 s duration target
+  does. That is what the heap-sized `DefaultLoadControl` in `PlayerActivity` and
+  `android:largeHeap` in the manifest are for. `DefaultAllocator` allocates on demand,
+  so the target is a ceiling, not a reservation.
+- `DefaultLoadControl.getAllocator()` returns a *filtering wrapper* in 1.11, not the
+  object whose `totalBytesAllocated` you can read. Build the `DefaultAllocator` and
+  pass it to the builder if anything needs to see how full it is.
+- `DefaultTimeBar` defaults to `keyCountIncrement = 20` — one D-pad press moves a
+  twentieth of the file, six minutes into a two-hour film. It keeps a single increment
+  for both directions and re-reads it on every key event, which is why an asymmetric
+  pair is set per press. In `dispatchKeyEvent`, not `onKeyDown`: a focused time bar
+  consumes those keys before the activity sees them.
+- `DefaultBandwidthMeter` recomputes only inside `onTransferEnd`, and only once a
+  sample passes its thresholds — so with a full buffer it holds its last value rather
+  than falling. The overlay labels it `est` for that reason; `down` is the live number.
 - `PlayerView` paints only the video rectangle. Letterbox bars show whatever is behind
   it, hence the explicit black on the root view and the window.
 
@@ -106,7 +129,7 @@ cases is built from the real server's dialect (non-default port, deep base path,
 ```
 WebDav.kt                    PROPFIND + namespace-aware DOM parse. TAG lives here.
 MainActivity.kt              Compose UI: browse list, settings form, directory stack
-PlayerActivity.kt            player, resume, INFO debug overlay, sink readout
+PlayerActivity.kt            player, resume, chapter skip button, INFO overlay
 res/values/theme.xml         palette + the window theme
 res/drawable/banner.xml      320x180, what the Leanback launcher shows
 res/drawable/ic_launcher.xml square icon, for Settings only
@@ -133,4 +156,5 @@ survive recreation (the directory stack), for zero extra dependencies.
 Each is marked with a `ponytail:` comment where it lives, saying what the ceiling is
 and what the upgrade would be: single server (`MainActivity`), no paging (`WebDav`),
 unbounded resume-position preferences (`PlayerActivity`), extension-based video
-detection (`WebDav`).
+detection (`WebDav`), the 500 ms skip-button poll (`PlayerActivity`), and release
+builds signed with the debug key (`app/build.gradle.kts`).

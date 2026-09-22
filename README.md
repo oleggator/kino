@@ -42,18 +42,35 @@ A listing still loading after 250ms shows a bar under the path. Playback positio
 remembered per file and reset once a file is watched to the end. Leaving the player —
 Home, or another app — releases the decoder; coming back resumes from where it was.
 
+In the player, left and right on the seek bar step 10s back and 30s forward — the same
+amount on every press and every repeat, which is the pair the Plex TV app uses. If the
+file carries Matroska chapters and one is named like an intro or credits (`OP`, `ED`,
+`Intro`, `Opening`, `Ending`, `Credits`, `Outro`, `Recap`, `Preview`), a **Skip** button
+sits in the corner for as long as that chapter runs and jumps to the end of it. Files
+without such chapters never show it.
+
 ## Checking passthrough
 
 **INFO** toggles an overlay — or `adb shell input keyevent 165`, since most TV remotes
-have no INFO button. It shows the video and audio format, the decoder in use, and what
-the TV and soundbar actually advertise:
+have no INFO button. Above media3's own readout (video and audio format, decoder in
+use) it adds three lines:
 
 ```
+buffer 31s | 44/170MB | 0 stalls
+net 38.1 Mbps down | 284.6 Mbps est | 34.2 Mbps file
 sink 10ch | passthrough: AC3 EAC3 JOC TrueHD DTS DTS-HD AC4
 ```
 
-A format missing from that line cannot be fixed in the app. It is the TV's (e)ARC
-capability report, not a player setting.
+- `buffer` — seconds of playback already fetched, bytes held against the target, and
+  rebuffers since playback started (seeks excluded). Loading stops at 50s or at the
+  byte target, whichever is hit first; the one nearer its limit is the one in charge.
+- `net` — `down` is live throughput and falls toward zero when the buffer is full,
+  which is correct rather than broken. `est` is media3's own capacity estimate, frozen
+  at whatever the link last managed, hence *estimated*. `file` is the file's overall
+  bitrate: what `down` has to beat on average. Starving looks like `down` sitting under
+  `file` while `buffer` drains.
+- `sink` — what this TV and soundbar advertise. A format missing from that line cannot
+  be fixed in the app. It is the (e)ARC capability report, not a player setting.
 
 ```
 adb logcat -s Kino:V EventLogger:V
