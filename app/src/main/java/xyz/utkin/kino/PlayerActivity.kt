@@ -31,6 +31,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.util.DebugTextViewHelper
 import androidx.media3.exoplayer.util.EventLogger
 import androidx.media3.extractor.metadata.Chapter
+import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
 import okhttp3.Credentials
 
@@ -79,6 +80,13 @@ class PlayerActivity : Activity() {
 
         /** How often the skip button re-checks where playback is. */
         private const val SKIP_POLL_MS = 500L
+
+        // What the Plex TV app does, from its SeekbarView.onKeyDown: +30s on right,
+        // -10s on left, the same on every press and every repeat. Asymmetric because
+        // the two directions are different jobs -- skipping ahead past something, and
+        // backing up over a line you missed.
+        private const val SEEK_FORWARD_MS = 30_000L
+        private const val SEEK_BACK_MS = 10_000L
     }
 
     /**
@@ -98,6 +106,7 @@ class PlayerActivity : Activity() {
     private lateinit var skipButton: Button
     private lateinit var url: String
 
+    private var timeBar: DefaultTimeBar? = null
     private var skips: List<Skip> = emptyList()
     private var skipToMs = 0L
 
@@ -121,6 +130,11 @@ class PlayerActivity : Activity() {
         // tracks, so there is nothing to handle for that case.
         playerView.setShowSubtitleButton(true)
         playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+        // DefaultTimeBar's default is keyCountIncrement = 20, so one D-pad press moves
+        // a twentieth of the file -- six minutes into a two-hour film. setKeyTimeIncrement
+        // replaces that with a fixed step; dispatchKeyEvent picks which one per press.
+        timeBar = playerView.findViewById(androidx.media3.ui.R.id.exo_progress)
+        timeBar?.setKeyTimeIncrement(SEEK_FORWARD_MS)
 
         skipButton = Button(this).apply {
             visibility = View.GONE
@@ -195,6 +209,10 @@ class PlayerActivity : Activity() {
         val p = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))
             .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
+            // The controller's rewind/fast-forward buttons default to 5s/15s; match the
+            // seek bar so the two controls do not disagree about what a skip is.
+            .setSeekBackIncrementMs(SEEK_BACK_MS)
+            .setSeekForwardIncrementMs(SEEK_FORWARD_MS)
             .build()
         player = p
         playerView.player = p
@@ -306,6 +324,25 @@ class PlayerActivity : Activity() {
         val supported = PASSTHROUGH_ENCODINGS.filterValues(caps::supportsEncoding).keys
         return "sink ${caps.maxChannelCount}ch | passthrough: " +
             if (supported.isEmpty()) "none (PCM only)" else supported.joinToString(" ")
+    }
+
+    /**
+     * DefaultTimeBar has one increment for both directions and negates it going left,
+     * so the only way to get Plex's asymmetric pair is to set it per press. It reads
+     * the increment fresh on every key event, so this is enough -- the bar still does
+     * all the scrubbing.
+     *
+     * dispatchKeyEvent rather than onKeyDown: the focused time bar consumes these keys,
+     * so the activity would never see them.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_RIGHT -> timeBar?.setKeyTimeIncrement(SEEK_FORWARD_MS)
+                KeyEvent.KEYCODE_DPAD_LEFT -> timeBar?.setKeyTimeIncrement(SEEK_BACK_MS)
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     /**
