@@ -13,7 +13,11 @@ private fun passKey(url: HttpUrl) = "pass:$url"
 
 /** A configured WebDAV share: where it is, and what gets sent to reach it. */
 data class Server(val url: HttpUrl, val user: String, val pass: String) {
-    /** Rows are labelled by host; the port shows only when it is not the scheme's. */
+    /**
+     * Rows are labelled by host; the port shows only when it is not the scheme's. Two
+     * roots on one host read the same, which was the accepted cost of having nothing
+     * to type when adding a server.
+     */
     val label: String
         get() = if (url.port == HttpUrl.defaultPort(url.scheme)) url.host else "${url.host}:${url.port}"
 }
@@ -82,9 +86,12 @@ fun removeServer(prefs: SharedPreferences, url: HttpUrl) {
  * password is for. That is the only thing standing between a server-supplied href and
  * the credentials of an unrelated host.
  */
-fun basicAuthFor(prefs: SharedPreferences, mediaUrl: String): String? {
-    val servers = loadServers(prefs)
+internal fun basicAuthFor(servers: List<Server>, mediaUrl: String): String? {
     val owner = ownerOf(servers.map(Server::url), mediaUrl) ?: return null
     val server = servers.first { it.url == owner }
     return Credentials.basic(server.user, server.pass)
 }
+
+/** The same, for a caller that holds prefs rather than an already-loaded list. */
+fun basicAuthFor(prefs: SharedPreferences, mediaUrl: String) =
+    basicAuthFor(loadServers(prefs), mediaUrl)

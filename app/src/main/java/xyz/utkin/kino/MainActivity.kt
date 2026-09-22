@@ -163,7 +163,10 @@ class MainActivity : ComponentActivity() {
         }
 
         val current = stack.last()
-        val auth = basicAuthFor(prefs, current).orEmpty()
+        // From the loaded list rather than prefs: one source of truth, and no disk-backed
+        // read on every recomposition. Null stays null all the way to the request --
+        // a URL under no configured server is sent no Authorization header at all.
+        val auth = basicAuthFor(servers, current)
         val entries = loaded?.takeIf { it.first == current }?.second
         LaunchedEffect(current, auth) {
             val url = current.toHttpUrlOrNull() ?: return@LaunchedEffect
@@ -307,7 +310,7 @@ class MainActivity : ComponentActivity() {
                     Button(onClick = onClose) { Text("Cancel") }
                     if (server != null) {
                         Spacer(Modifier.width(12.dp))
-                        // Takes its credentials and its resume positions with it.
+                        // Takes its credentials with it; the resume positions stay.
                         Button(onClick = { onRemove(server.url) }) { Text("Remove") }
                     }
                 }
@@ -389,7 +392,7 @@ private fun Browse(
             ) {
                 itemsIndexed(
                     rows,
-                    key = { _, entry -> entry?.url?.toString() ?: "settings" },
+                    key = { _, entry -> entry?.url?.toString() ?: "add" },
                 ) { index, entry ->
                     ListItem(
                         selected = false,

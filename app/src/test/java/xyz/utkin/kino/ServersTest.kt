@@ -2,6 +2,7 @@ package xyz.utkin.kino
 
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -48,6 +49,21 @@ class ServersTest {
         assertEquals(inner, ownerOf(listOf(nas, inner), "https://nas.lan/dav/shows/Ep.mkv"))
         assertEquals(inner, ownerOf(listOf(inner, nas), "https://nas.lan/dav/shows/Ep.mkv"))
         assertEquals(nas, ownerOf(listOf(nas, inner), "https://nas.lan/dav/films/Ep.mkv"))
+    }
+
+    /** The boundary itself: a URL nobody configured is sent no credentials. */
+    @Test
+    fun `credentials only ever reach the server they belong to`() {
+        val servers = listOf(Server(nas, "me", "sekrit"), Server(pi, "pi", "raspberry"))
+
+        assertEquals(basicAuthFor(servers, "https://nas.lan/dav/Ep.mkv"), basicAuthFor(servers, nas.toString()))
+        assertNotEquals(
+            basicAuthFor(servers, "https://nas.lan/dav/Ep.mkv"),
+            basicAuthFor(servers, "http://pi.lan:8080/media/Ep.mkv"),
+        )
+        assertNull(basicAuthFor(servers, "https://evil.example/dav/Ep.mkv"))
+        assertNull(basicAuthFor(servers, "https://nas.lan/private/Ep.mkv"))
+        assertNull(basicAuthFor(emptyList(), "https://nas.lan/dav/Ep.mkv"))
     }
 
     @Test

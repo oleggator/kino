@@ -124,9 +124,11 @@ it installs over a debug build.
 
 `.github/workflows/build.yml` runs the same two tasks and attaches the APK unzipped.
 
-`WebDavTest` is a plain JVM test. `parseMultistatus` uses `javax.xml` DOM specifically
-so it runs with no Robolectric and no extra dependency — keep it that way. One of its
-cases is built from the real server's dialect (non-default port, deep base path,
+`WebDavTest` and `ServersTest` are plain JVM tests. `parseMultistatus` uses `javax.xml`
+DOM specifically so it runs with no Robolectric and no extra dependency — keep it that
+way, and keep the functions they cover free of `SharedPreferences` for the same reason
+(hence `basicAuthFor(servers, url)` beside the prefs-taking one). One `WebDavTest` case
+is built from the real server's dialect (non-default port, deep base path,
 `<D:resourcetype></D:resourcetype>` as an open/close pair).
 
 ## Files
@@ -134,7 +136,7 @@ cases is built from the real server's dialect (non-default port, deep base path,
 ```
 WebDav.kt                    PROPFIND + namespace-aware DOM parse. TAG lives here.
 Servers.kt                   the configured servers: storage, codec, ownerOf
-MainActivity.kt              Compose UI: browse list, settings form, directory stack
+MainActivity.kt              Compose UI: server list, browse list, settings form
 PlayerActivity.kt            player, resume, chapter skip button, INFO overlay
 res/values/theme.xml         palette + the window theme
 res/drawable/banner.xml      320x180, what the Leanback launcher shows

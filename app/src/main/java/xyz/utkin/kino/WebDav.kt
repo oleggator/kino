@@ -48,10 +48,10 @@ data class Entry(val name: String, val url: HttpUrl, val isDir: Boolean) {
  * of its own, so this only bites on a directory with thousands of entries; the fix
  * then is a windowed adapter, not a different request.
  */
-fun webdavList(client: OkHttpClient, url: HttpUrl, auth: String): List<Entry> {
+fun webdavList(client: OkHttpClient, url: HttpUrl, auth: String?): List<Entry> {
     val request = Request.Builder()
         .url(url)
-        .header("Authorization", auth)
+        .apply { if (auth != null) header("Authorization", auth) }
         .header("Depth", "1")
         .method("PROPFIND", PROPFIND_BODY.toRequestBody(XML))
         .build()

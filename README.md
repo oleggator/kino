@@ -1,6 +1,6 @@
 # Kino
 
-Minimal Android TV client for a WebDAV share. Browse, Direct Play, nothing else.
+Minimal Android TV client for WebDAV shares. Browse, Direct Play, nothing else.
 
 No transcoding, no library, no metadata. Video goes to the hardware decoder; Dolby and
 DTS audio go to the soundbar as an untouched bitstream.
