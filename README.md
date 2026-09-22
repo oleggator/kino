@@ -31,13 +31,17 @@ time, so they install over each other but not over a locally built one.
 
 ## Use
 
-First launch opens a settings screen asking for the WebDAV URL, username and
-password. Leave the credentials blank if the server needs none. The first row of the
-root listing, `⚙ Server settings`, reopens it.
+Launching lands on the list of servers. `+ Add server` asks for a WebDAV URL, a
+username and a password — leave the credentials blank if the server needs none — and
+the server then appears as a row. **Long-press** a server row to edit it, or to remove
+it, which forgets its credentials but keeps the playback positions — re-add it and it
+picks up where you left off. Each server keeps its own credentials, and they are only
+ever sent to that server.
 
 Compose UI on Material 3 for TV, with its own dark theme rather than the panel's.
 D-pad navigates — the focused row scales and glows — OK opens, Back goes up one
-directory. Focus starts on the first row of every listing, including after going back.
+directory and then back to the server list. Focus starts on the first row of every
+listing, including after going back.
 A listing still loading after 250ms shows a bar under the path. Playback position is
 remembered per file and reset once a file is watched to the end. Leaving the player —
 Home, or another app — releases the decoder; coming back resumes from where it was.

@@ -43,7 +43,6 @@ import androidx.media3.exoplayer.util.EventLogger
 import androidx.media3.extractor.metadata.Chapter
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
-import okhttp3.Credentials
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 
@@ -270,10 +269,16 @@ class PlayerActivity : Activity() {
         // redirect to http and carry the password in clear. A same-protocol redirect to
         // another host still takes the header with it; stripping that would need a
         // custom DataSource, which is exactly what this project does not do.
+        //
+        // Which credentials, or none at all, is decided by which configured server owns
+        // this URL. A URL under no server gets no header: with several servers, sending
+        // one's password to another is the failure worth designing out.
         val http = DefaultHttpDataSource.Factory()
-            .setDefaultRequestProperties(mapOf("Authorization" to basicAuth()))
             .setAllowCrossProtocolRedirects(false)
             .setTransferListener(byteCounter)
+        basicAuthFor(prefs, url)?.let {
+            http.setDefaultRequestProperties(mapOf("Authorization" to it))
+        }
 
         bytesTransferred.set(0)
         contentLengthBytes = 0L
@@ -594,13 +599,9 @@ class PlayerActivity : Activity() {
         prefs.edit().putLong(positionKey(), remember).apply()
     }
 
-    /** Prefixed so a media URL can never collide with the "url"/"user"/"pass" keys. */
+    /** Prefixed so a media URL can never collide with the server or credential keys. */
     private fun positionKey() = "pos:$url"
 
-    private fun basicAuth() = Credentials.basic(
-        prefs.getString("user", "").orEmpty(),
-        prefs.getString("pass", "").orEmpty(),
-    )
 }
 
 /** A chapter we are willing to jump over, with the end time already resolved. */

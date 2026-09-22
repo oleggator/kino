@@ -1,6 +1,6 @@
 # Kino
 
-Minimal Android TV WebDAV Direct Play client. ~1100 lines of Kotlin across three
+Minimal Android TV WebDAV Direct Play client. ~1300 lines of Kotlin across four
 source files, six dependencies, no layout XML.
 
 ## The design premise — do not "improve" this
@@ -103,6 +103,11 @@ playback and the overlay's sink probe, so the two ask the output the same questi
 - `DefaultBandwidthMeter` recomputes only inside `onTransferEnd`, and only once a
   sample passes its thresholds — so with a full buffer it holds its last value rather
   than falling. The overlay labels it `est` for that reason; `down` is the live number.
+- **`org.json` is an `android.jar` stub in plain JVM unit tests**, and this module
+  sets `unitTests.isReturnDefaultValues = true` — so a JSON call there does not throw,
+  it quietly returns null. That is why `Servers.kt` stores server roots as a
+  newline-joined string rather than JSON: a URL cannot contain a newline, so the codec
+  needs no escaping and stays testable without Robolectric.
 - `PlayerView` paints only the video rectangle. Letterbox bars show whatever is behind
   it, hence the explicit black on the root view and the window.
 
@@ -128,6 +133,7 @@ cases is built from the real server's dialect (non-default port, deep base path,
 
 ```
 WebDav.kt                    PROPFIND + namespace-aware DOM parse. TAG lives here.
+Servers.kt                   the configured servers: storage, codec, ownerOf
 MainActivity.kt              Compose UI: browse list, settings form, directory stack
 PlayerActivity.kt            player, resume, chapter skip button, INFO overlay
 res/values/theme.xml         palette + the window theme
@@ -154,7 +160,16 @@ survive recreation (the directory stack), for zero extra dependencies.
 ## Deliberate shortcuts
 
 Each is marked with a `ponytail:` comment where it lives, saying what the ceiling is
-and what the upgrade would be: single server (`MainActivity`), no paging (`WebDav`),
-unbounded resume-position preferences (`PlayerActivity`), extension-based video
-detection (`WebDav`), the 500 ms skip-button poll (`PlayerActivity`), and release
-builds signed with the debug key (`app/build.gradle.kts`).
+and what the upgrade would be: no paging (`WebDav`), unbounded resume-position
+preferences (`PlayerActivity`), extension-based file detection (`WebDav`), the 500 ms
+skip-button poll (`PlayerActivity`), and release builds signed with the debug key
+(`app/build.gradle.kts`).
+
+## Credentials belong to a server, not to the app
+
+`basicAuthFor(prefs, url)` in `Servers.kt` is the only way an `Authorization` header is
+ever produced. It resolves the URL to the configured root that owns it — longest prefix
+wins — and returns null when none does, in which case **no header is sent at all**.
+Do not reintroduce a global `basicAuth()`: with several servers configured, handing one
+server's password to another is the failure this design exists to prevent, and a
+server-supplied `href` pointing off-origin is the path that would do it.

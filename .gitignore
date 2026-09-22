@@ -4,3 +4,6 @@ build/
 local.properties
 *.iml
 .idea/
+
+# Working notes and saved plans: local, not the repo's to carry.
+notes/

@@ -50,7 +50,6 @@ import androidx.tv.material3.darkColorScheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import okhttp3.Credentials
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
@@ -102,20 +101,22 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Owns everything the two screens share: where we are, what is in it, and whether
-     * the settings form is up. No ViewModel — `rememberSaveable` already carries the
-     * one piece of state that has to survive the activity being recreated.
+     * Owns everything the three screens share: which server list or directory we are
+     * looking at, what is in it, and whether the settings form is up. No ViewModel —
+     * `rememberSaveable` already carries the state that has to survive the activity
+     * being recreated.
      */
     @Composable
     private fun App() {
         val context = LocalContext.current
-        // ponytail: one server, one root. A second would need a picker screen and a
-        // key scheme for the resume positions; add both if there is ever a second.
-        // HttpUrl is not Parcelable, so the stack is saved as strings.
-        var stack by rememberSaveable {
-            mutableStateOf(listOfNotNull(prefs.getString("url", null)))
-        }
-        var showSettings by rememberSaveable { mutableStateOf(stack.isEmpty()) }
+        var servers by remember { mutableStateOf(loadServers(prefs)) }
+        // Empty means the server list; anything else is a directory stack under one
+        // server. HttpUrl is not Parcelable, so it is saved as strings.
+        var stack by rememberSaveable { mutableStateOf(emptyList<String>()) }
+        // null = form closed, "" = adding, anything else = editing that server's URL.
+        // A string because that is what rememberSaveable takes without a custom Saver,
+        // which is the same reason the stack above is one.
+        var editing by rememberSaveable { mutableStateOf<String?>(null) }
         // Tagged with the directory it came from. A LaunchedEffect body runs *after*
         // composition, so a plain `entries` list is briefly the previous folder's --
         // clearing it inside the effect was still one frame too late. Comparing the tag
@@ -123,20 +124,46 @@ class MainActivity : ComponentActivity() {
         // rather than another piece of state to keep in sync.
         var loaded by remember { mutableStateOf<Pair<String, List<Entry>>?>(null) }
 
-        if (showSettings) {
+        editing?.let { which ->
             SettingsScreen(
-                canCancel = stack.isNotEmpty(),
-                onCancel = { showSettings = false },
+                server = servers.firstOrNull { it.url.toString() == which },
+                onClose = { editing = null },
                 onSave = { saved ->
-                    stack = listOf(saved.toString())
-                    showSettings = false
+                    saveServer(prefs, which.toHttpUrlOrNull(), saved)
+                    servers = loadServers(prefs)
+                    editing = null
+                },
+                onRemove = { url ->
+                    removeServer(prefs, url)
+                    servers = loadServers(prefs)
+                    editing = null
                 },
             )
             return
         }
 
+        if (stack.isEmpty()) {
+            // The same synthetic-row convention the WebDAV root used to carry: null is
+            // the settings row. `remember` keeps the list identity stable, which is
+            // what stops Browse recomposing every row on every recomposition here.
+            val sources: List<Entry?> = remember(servers) {
+                listOf<Entry?>(null) + servers.map { Entry(it.label, it.url, isDir = true) }
+            }
+            Browse(
+                path = "Servers",
+                loading = false,
+                rows = sources,
+                onPick = { entry ->
+                    if (entry == null) editing = "" else stack = listOf(entry.url.toString())
+                },
+                // Long press is the only affordance a D-pad has left once OK is taken.
+                onHold = { entry -> if (entry != null) editing = entry.url.toString() },
+            )
+            return
+        }
+
         val current = stack.last()
-        val auth = basicAuth()
+        val auth = basicAuthFor(prefs, current).orEmpty()
         val entries = loaded?.takeIf { it.first == current }?.second
         LaunchedEffect(current, auth) {
             val url = current.toHttpUrlOrNull() ?: return@LaunchedEffect
@@ -152,25 +179,24 @@ class MainActivity : ComponentActivity() {
                 }
         }
 
-        BackHandler(enabled = stack.size > 1) { stack = stack.dropLast(1) }
+        // Back out of the last directory lands on the server list; back from there is
+        // left to the system, so it leaves the app.
+        BackHandler(enabled = stack.isNotEmpty()) { stack = stack.dropLast(1) }
 
-        // The settings row lives at the root only, so there is always a way back into
-        // the form even when the listing is empty or the credentials are wrong.
         // `remember` is load-bearing, not tidiness. List is an unstable type to Compose,
         // and strong skipping compares unstable parameters by identity — so a freshly
         // allocated list here made Browse, and every row in it, recompose on every
         // single recomposition of App. That is the flashing.
-        val rows: List<Entry?> = remember(entries, stack.size) {
-            if (stack.size <= 1) listOf<Entry?>(null) + entries.orEmpty() else entries.orEmpty()
-        }
+        val rows: List<Entry?> = remember(entries) { entries.orEmpty() }
 
         Browse(
-            path = current.toHttpUrlOrNull()?.displayPath().orEmpty(),
+            // Host included: with more than one server the path alone is ambiguous.
+            path = current.toHttpUrlOrNull()?.let { "${it.host}${it.displayPath()}" }.orEmpty(),
             loading = entries == null,
             rows = rows,
             onPick = { entry ->
                 when {
-                    entry == null -> showSettings = true
+                    entry == null -> Unit
                     entry.isDir -> stack = stack + entry.url.toString()
                     else -> {
                         Log.i(TAG, "opening ${entry.url}")
@@ -184,23 +210,29 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun basicAuth(): String = Credentials.basic(
-        prefs.getString("user", "").orEmpty(),
-        prefs.getString("pass", "").orEmpty(),
-    )
-
+    /**
+     * Adds a server when [server] is null, edits it otherwise. The fields are keyed on
+     * which server is being edited, so opening the form on a different one refills it
+     * rather than showing the last one's values.
+     */
     @Composable
-    private fun SettingsScreen(canCancel: Boolean, onSave: (HttpUrl) -> Unit, onCancel: () -> Unit) {
+    private fun SettingsScreen(
+        server: Server?,
+        onSave: (Server) -> Unit,
+        onRemove: (HttpUrl) -> Unit,
+        onClose: () -> Unit,
+    ) {
         val context = LocalContext.current
-        var url by rememberSaveable { mutableStateOf(prefs.getString("url", "").orEmpty()) }
-        var user by rememberSaveable { mutableStateOf(prefs.getString("user", "").orEmpty()) }
-        var pass by rememberSaveable { mutableStateOf(prefs.getString("pass", "").orEmpty()) }
+        val key = server?.url?.toString()
+        var url by rememberSaveable(key) { mutableStateOf(key.orEmpty()) }
+        var user by rememberSaveable(key) { mutableStateOf(server?.user.orEmpty()) }
+        var pass by rememberSaveable(key) { mutableStateOf(server?.pass.orEmpty()) }
         val firstField = remember { FocusRequester() }
 
-        // Disabled with no server configured, so Back falls through to the system and
-        // leaves the app. Enabled, it would call an onCancel that deliberately refuses
-        // to dismiss — leaving Back doing nothing at all on a fresh install.
-        BackHandler(enabled = canCancel) { onCancel() }
+        // There is always a server list behind the form now, so Back always has
+        // somewhere to go — unlike the old fresh-install case, where dismissing led
+        // nowhere and Back had to fall through to the system instead.
+        BackHandler { onClose() }
         LaunchedEffect(Unit) { runCatching { firstField.requestFocus() } }
 
         // OutlinedTextField reads androidx.compose.material3's MaterialTheme, not the
@@ -223,7 +255,12 @@ class MainActivity : ComponentActivity() {
                 // Text. OutlinedTextField colours its slots through compose-material3's
                 // LocalContentColor; tv-material's Text reads tv-material's, a different
                 // CompositionLocal, whose default is Color.Black — invisible here.
-                Text("Server", fontSize = 32.sp, fontWeight = FontWeight.Light, color = ON_SURFACE)
+                Text(
+                    if (server == null) "Add server" else "Edit server",
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Light,
+                    color = ON_SURFACE,
+                )
                 Spacer(Modifier.height(24.dp))
                 OutlinedTextField(
                     value = url,
@@ -263,16 +300,16 @@ class MainActivity : ComponentActivity() {
                                 Toast.makeText(context, "That URL doesn't parse", Toast.LENGTH_LONG).show()
                                 return@Button
                             }
-                            prefs.edit()
-                                .putString("url", parsed.toString())
-                                .putString("user", user)
-                                .putString("pass", pass)
-                                .apply()
-                            onSave(parsed)
+                            onSave(Server(parsed, user, pass))
                         },
                     ) { Text("Save") }
                     Spacer(Modifier.width(12.dp))
-                    if (canCancel) Button(onClick = onCancel) { Text("Cancel") }
+                    Button(onClick = onClose) { Text("Cancel") }
+                    if (server != null) {
+                        Spacer(Modifier.width(12.dp))
+                        // Takes its credentials and its resume positions with it.
+                        Button(onClick = { onRemove(server.url) }) { Text("Remove") }
+                    }
                 }
             }
         }
@@ -294,6 +331,7 @@ private fun Browse(
     loading: Boolean,
     rows: List<Entry?>,
     onPick: (Entry?) -> Unit,
+    onHold: ((Entry?) -> Unit)? = null,
 ) {
     val first = remember { FocusRequester() }
 
@@ -356,17 +394,24 @@ private fun Browse(
                     ListItem(
                         selected = false,
                         onClick = { onPick(entry) },
+                        onLongClick = onHold?.let { hold -> { hold(entry) } },
                         headlineContent = {
-                            Text(entry?.label ?: "Server settings", fontSize = 19.sp)
+                            // The null row only ever appears on the server list now,
+                            // where it adds one -- directory listings carry no synthetic
+                            // rows since the settings row moved off the WebDAV root.
+                            Text(entry?.label ?: "Add server", fontSize = 19.sp)
                         },
                         leadingContent = {
                             Text(
                                 when {
-                                    entry == null -> "⚙"
+                                    // A gear would read as settings; this row adds a
+                                    // server, and on a fresh install it is the only
+                                    // row on the screen, so it carries the accent too.
+                                    entry == null -> "+"
                                     entry.isDir -> "▣"
                                     else -> "▶"
                                 },
-                                color = if (entry == null) MUTED else ACCENT,
+                                color = ACCENT,
                                 fontSize = 17.sp,
                             )
                         },
