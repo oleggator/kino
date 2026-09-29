@@ -1,6 +1,7 @@
 # Kino
 
-Minimal Android TV client for WebDAV shares. Browse, Direct Play, nothing else.
+Minimal Android TV client for WebDAV shares and DLNA servers. Browse, Direct Play,
+nothing else.
 
 No transcoding, no library, no metadata. Video goes to the hardware decoder; Dolby and
 DTS audio go to the soundbar as an untouched bitstream.
@@ -31,9 +32,18 @@ time, so they install over each other but not over a locally built one.
 
 ## Use
 
-Launching lands on the list of servers. `+ Add server` asks for a WebDAV URL, a
-username and a password — leave the credentials blank if the server needs none — and
-the server then appears as a row. **Long-press** a server row to edit it, or to remove
+Launching lands on the list of servers. `+ Add server` offers three ways to add one:
+
+- **WebDAV URL** — a URL, a username and a password. Leave the credentials blank if the
+  server needs none.
+- **Scan for DLNA** — SSDP discovery. Pick from whatever answers.
+- **DLNA by address** — for a server a scan cannot see. Paste its device description
+  URL (`http://10.0.0.9:8200/rootDesc.xml`, which servers publish in their own
+  settings), or just type its host or IP and Kino asks the device directly.
+
+The third exists because SSDP is multicast with TTL 1: a server on another VLAN, behind
+a router or across a VPN never answers a scan, however well the scan works. Playback is
+unaffected either way — DLNA hands back ordinary routable HTTP URLs. **Long-press** a server row to edit it, or to remove
 it, which forgets its credentials but keeps the playback positions — re-add it and it
 picks up where you left off. Each server keeps its own credentials, and they are only
 ever sent to that server.
@@ -92,3 +102,5 @@ decoder name means the track was decoded to PCM instead.
 | AV1 may not play | No software decoder is bundled; the TV needs an AV1 hardware decoder. |
 | TrueHD and DTS-HD MA need eARC | ARC lacks the bandwidth. AC-3 and E-AC-3, including Atmos, pass over plain ARC. |
 | Cleartext HTTP allowed app-wide | The server URL is user-configurable, so the domain cannot be pinned in a network security config. |
+| DLNA scanning is local-subnet only | SSDP multicast has TTL 1 and does not cross a router. Add anything routed by address instead. |
+| DLNA transcodes are refused | Kino asks for the original `res`; a server offering only `DLNA.ORG_CI=1` renditions is being used against its will. |

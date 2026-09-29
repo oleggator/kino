@@ -13,14 +13,29 @@ class ServersTest {
 
     @Test
     fun `round trips a list of roots`() {
-        assertEquals(listOf(nas, pi), decodeServers(encodeServers(listOf(nas, pi))))
+        val stored = listOf(Server(nas, "", ""), Server(pi, "", ""))
+
+        assertEquals(stored, decodeServers(encodeServers(stored)))
+    }
+
+    /** The DLNA line carries what discovery gave us; a WebDAV line stays a bare URL. */
+    @Test
+    fun `round trips a DLNA server, and leaves WebDAV lines as they were`() {
+        val dlna = Server(nas, "", "", udn = "uuid:4d69", name = "Living Room NAS")
+        val both = listOf(Server(pi, "", ""), dlna)
+        val text = encodeServers(both)
+
+        assertEquals("$pi\ndlna|$nas|uuid:4d69|Living Room NAS", text)
+        assertEquals(both, decodeServers(text))
+        assertEquals(true, decodeServers(text).last().isDlna)
     }
 
     @Test
     fun `survives nothing stored, blank, and a line that does not parse`() {
         assertEquals(emptyList<Any>(), decodeServers(null))
         assertEquals(emptyList<Any>(), decodeServers(""))
-        assertEquals(listOf(nas), decodeServers("not a url\n$nas\n"))
+        assertEquals(listOf(nas), decodeServers("not a url\n$nas\n").map(Server::url))
+        assertEquals(emptyList<Any>(), decodeServers("dlna|$nas|missing-a-field"))
     }
 
     /**
@@ -62,6 +77,9 @@ class ServersTest {
             basicAuthFor(servers, "http://pi.lan:8080/media/Ep.mkv"),
         )
         assertNull(basicAuthFor(servers, "https://evil.example/dav/Ep.mkv"))
+        // A DLNA server is anonymous, and its res URLs must never collect a password
+        // that happens to sit under the same prefix.
+        assertNull(basicAuthFor(listOf(Server(nas, "me", "sekrit", udn = "uuid:1")), "https://nas.lan/dav/Ep.mkv"))
         assertNull(basicAuthFor(servers, "https://nas.lan/private/Ep.mkv"))
         assertNull(basicAuthFor(emptyList(), "https://nas.lan/dav/Ep.mkv"))
     }
@@ -71,5 +89,7 @@ class ServersTest {
         assertEquals("nas.lan", Server(nas, "", "").label)
         assertEquals("pi.lan:8080", Server(pi, "", "").label)
         assertEquals("nas.lan", Server("http://nas.lan/".toHttpUrl(), "", "").label)
+        // A DLNA device names itself.
+        assertEquals("Living Room NAS", Server(nas, "", "", "uuid:1", "Living Room NAS").label)
     }
 }

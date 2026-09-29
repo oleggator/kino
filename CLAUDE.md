@@ -1,7 +1,7 @@
 # Kino
 
-Minimal Android TV WebDAV Direct Play client. ~1300 lines of Kotlin across four
-source files, six dependencies, no layout XML.
+Minimal Android TV Direct Play client for WebDAV shares and DLNA servers. ~1800 lines
+of Kotlin across five source files, six dependencies, no layout XML.
 
 ## The design premise — do not "improve" this
 
@@ -124,7 +124,7 @@ it installs over a debug build.
 
 `.github/workflows/build.yml` runs the same two tasks and attaches the APK unzipped.
 
-`WebDavTest` and `ServersTest` are plain JVM tests. `parseMultistatus` uses `javax.xml`
+`WebDavTest`, `ServersTest` and `DlnaTest` are plain JVM tests. `parseMultistatus` uses `javax.xml`
 DOM specifically so it runs with no Robolectric and no extra dependency — keep it that
 way, and keep the functions they cover free of `SharedPreferences` for the same reason
 (hence `basicAuthFor(servers, url)` beside the prefs-taking one). One `WebDavTest` case
@@ -135,6 +135,7 @@ is built from the real server's dialect (non-default port, deep base path,
 
 ```
 WebDav.kt                    PROPFIND + namespace-aware DOM parse. TAG lives here.
+Dlna.kt                      SSDP, device description, ContentDirectory Browse, DIDL
 Servers.kt                   the configured servers: storage, codec, ownerOf
 MainActivity.kt              Compose UI: server list, browse list, settings form
 PlayerActivity.kt            player, resume, chapter skip button, INFO overlay
@@ -167,6 +168,35 @@ preferences (`PlayerActivity`), extension-based file detection (`WebDav`), the 5
 skip-button poll (`PlayerActivity`), and release builds signed with the debug key
 (`app/build.gradle.kts`).
 
+## DLNA, and what not to "improve" about it
+
+No UPnP library. SSDP is a `DatagramSocket`, Browse is a SOAP POST through the OkHttp
+client that was already here, and every parse goes through `WebDav.kt`'s XXE-guarded
+DOM builder — which matters more here, not less, since a DLNA server is anonymous by
+definition.
+
+- **What is stored is the device description URL, not the ContentDirectory control
+  URL.** The control URL is the device's own business and moves when it feels like it;
+  the description URL is the address a person can read, type and correct. The control
+  URL is resolved once per app run and cached in memory.
+- **`<Result>` is escaped XML inside XML.** `textContent` unescapes the DIDL-Lite
+  document, and that string is parsed as a second document. Walking it as child nodes
+  of the SOAP response is the classic dead end.
+- **ObjectIDs contain `&`** (`0$1$8`, `64$@30489&x`), so the request body escapes them
+  or the server answers 500.
+- **`DLNA.ORG_CI=1` means the server transcoded it.** `pickRes` prefers `CI=0`. Direct
+  Play is the whole premise; taking a transcode because it was listed first would give
+  that away silently.
+- **Discovery is multicast with TTL 1**, so it never crosses a router — hence *DLNA by
+  address*, which also accepts a bare host and unicasts an M-SEARCH to it. That is spec,
+  not guarantee: a device may ignore unicast search, so the description URL stays a
+  first-class way in rather than a fallback.
+- **Replies to M-SEARCH come back unicast**, so no `MulticastLock` and no
+  `CHANGE_WIFI_MULTICAST_STATE` permission are needed. Do not add them.
+- **`upnp:class` decides what is playable**, not the filename. The server saying what it
+  holds beats `WebDav.kt`'s extension sniffing, so there is no extension set on this
+  path.
+
 ## Credentials belong to a server, not to the app
 
 `basicAuthFor(prefs, url)` in `Servers.kt` is the only way an `Authorization` header is
@@ -174,4 +204,6 @@ ever produced. It resolves the URL to the configured root that owns it — longe
 wins — and returns null when none does, in which case **no header is sent at all**.
 Do not reintroduce a global `basicAuth()`: with several servers configured, handing one
 server's password to another is the failure this design exists to prevent, and a
-server-supplied `href` pointing off-origin is the path that would do it.
+server-supplied `href` pointing off-origin is the path that would do it. DLNA servers
+are excluded from the lookup outright — they are anonymous, and a `res` URL must never
+collect a password that happens to sit under the same prefix.

@@ -37,9 +37,23 @@ private const val PROPFIND_BODY =
     """<?xml version="1.0" encoding="utf-8"?>""" +
         """<propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>"""
 
-data class Entry(val name: String, val url: HttpUrl, val isDir: Boolean) {
+/**
+ * A row in a listing. [loc] is what following it pushes on the browse stack — the URL
+ * itself for WebDAV, and an encoded `(description, ObjectID, title)` for a DLNA
+ * container, which is not a URL at all. [url] stays what gets played.
+ */
+data class Entry(
+    val name: String,
+    val url: HttpUrl,
+    val isDir: Boolean,
+    val loc: String = url.toString(),
+) {
     val label: String get() = if (isDir) "$name/" else name
 }
+
+/** Dirs first, then case-insensitive name — the order both kinds of listing use. */
+internal val BROWSE_ORDER: Comparator<Entry> =
+    compareByDescending<Entry> { it.isDir }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }
 
 /**
  * One `PROPFIND Depth: 1` against [url]. Directories plus playable files, nothing else.
@@ -90,10 +104,7 @@ internal fun parseMultistatus(xml: ByteArray, base: HttpUrl): List<Entry> {
         entries.add(Entry(name, resolved, isDir))
     }
 
-    entries.sortWith(
-        compareByDescending<Entry> { it.isDir }
-            .thenBy(String.CASE_INSENSITIVE_ORDER) { it.name },
-    )
+    entries.sortWith(BROWSE_ORDER)
     return entries
 }
 
@@ -101,7 +112,8 @@ internal fun parseMultistatus(xml: ByteArray, base: HttpUrl): List<Entry> {
 private fun Element.firstText(localName: String): String? =
     getElementsByTagNameNS(DAV, localName).item(0)?.textContent?.trim()
 
-private fun newDocumentBuilder(): DocumentBuilder =
+/** Internal, not private: `Dlna.kt` parses three more documents through the same guard. */
+internal fun newDocumentBuilder(): DocumentBuilder =
     DocumentBuilderFactory.newInstance().apply {
         isNamespaceAware = true
         // This parses a response off the network, so XXE is a real trust boundary.
