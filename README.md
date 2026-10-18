@@ -9,10 +9,24 @@ DTS audio go to the soundbar as an untouched bitstream.
 
 - Android TV, minSdk 24. Developed against Android 14 on a TCL Smart TV Pro.
 - Android SDK `platforms;android-37.0` and `build-tools;36.0.0`. AGP 9 addresses
-  platforms by minor version, so the directory really is `android-37.0`.
+  platforms by minor version, so the directory really is `android-37.0`. Already have
+  an SDK? The build finds it. If not, `just sdk` fetches a repo-local one.
 - JDK 17 or newer. Built and tested here on 21 and 26.
 
 ## Build
+
+```
+just build      # test + assembleRelease
+just install    # the above, then adb install onto a connected TV
+just sdk        # only if you have no Android SDK: fetch one into .sdk/
+```
+
+`just` on its own lists the recipes. It finds your SDK rather than asking you to wire
+one up: `.sdk/` if `just sdk` put one there, else `$ANDROID_HOME`, `$ANDROID_SDK_ROOT`,
+`~/Android/Sdk` or `/opt/android-sdk`, and it writes `local.properties` to match.
+`just --evaluate sdk` prints which one won. Nothing is downloaded behind your back —
+with no SDK anywhere the build stops and points at `just sdk`. Underneath it is still
+Gradle:
 
 ```
 ./gradlew test assembleRelease

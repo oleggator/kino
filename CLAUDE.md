@@ -116,6 +116,24 @@ It sends transport commands and nothing else, so it sits outside the audio path.
 ## Build
 
 ```
+just build
+```
+
+`justfile` resolves the Android SDK so that "SDK location not found" cannot be the
+first thing a clone hits: `.sdk/` if `just sdk` fetched one there, else `$ANDROID_HOME`,
+`$ANDROID_SDK_ROOT`, `~/Android/Sdk`, `/opt/android-sdk` — and it writes
+`local.properties` from whichever won, every run, so that file cannot go stale against
+the resolution. `just --evaluate sdk` prints the winner.
+
+Fetching is never implicit. `just sdk` is the only recipe that downloads an SDK, it is
+not a dependency of anything, and with no SDK found the build recipes fail pointing at
+it. Downloading half a gigabyte into someone's home as a side effect of "build the project" is
+the behaviour being avoided. Two traps are paid for inside that recipe: the tool
+resolves the SDK root to `~/Android` unless `ANDROID_HOME` is exported for it, whatever
+directory it is run from, and `--licenses` no longer exists (`yes |` in front of it dies
+on SIGPIPE). Underneath:
+
+```
 ./gradlew test assembleRelease
 ```
 
@@ -136,6 +154,7 @@ is built from the real server's dialect (non-default port, deep base path,
 ## Files
 
 ```
+justfile                     SDK bootstrap + the build entrypoints
 WebDav.kt                    PROPFIND + namespace-aware DOM parse. TAG lives here.
 Servers.kt                   the configured servers: storage, codec, ownerOf
 MainActivity.kt              Compose UI: server list, browse list, settings form

@@ -1,4 +1,6 @@
 .gradle/
+# The repo-local SDK, if `just sdk` fetched one.
+.sdk/
 build/
 .kotlin/
 local.properties
