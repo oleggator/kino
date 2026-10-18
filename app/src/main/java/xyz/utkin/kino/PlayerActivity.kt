@@ -512,7 +512,7 @@ class PlayerActivity : Activity() {
     private fun totalLength(source: DataSource): Long {
         val headers = (source as? HttpDataSource)?.responseHeaders ?: return 0L
         fun header(name: String) = headers.entries
-            .firstOrNull { it.key?.equals(name, ignoreCase = true) == true }
+            .firstOrNull { it.key.equals(name, ignoreCase = true) }
             ?.value?.firstOrNull()
         header("Content-Range")?.substringAfterLast('/', "")?.toLongOrNull()?.let { return it }
         return header("Content-Length")?.toLongOrNull() ?: 0L
