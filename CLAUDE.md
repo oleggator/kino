@@ -1,7 +1,7 @@
 # Kino
 
 Minimal Android TV WebDAV Direct Play client. ~1300 lines of Kotlin across four
-source files, six dependencies, no layout XML.
+source files, seven dependencies, no layout XML.
 
 ## The design premise — do not "improve" this
 
@@ -24,6 +24,8 @@ not written here is one that cannot get between the bitstream and the soundbar.
 What *is* configured is downstream of none of that: a heap-sized `DefaultLoadControl`
 (buffering), the D-pad seek increments, and one `AudioAttributes` instance shared by
 playback and the overlay's sink probe, so the two ask the output the same question.
+A media3 `MediaSession` wraps the player too, for voice and system playback controls.
+It sends transport commands and nothing else, so it sits outside the audio path.
 
 ## Android gotchas already paid for
 

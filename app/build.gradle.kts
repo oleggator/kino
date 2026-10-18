@@ -66,6 +66,9 @@ dependencies {
 
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
+    // Transport controls only: Google Assistant, Google TV's system controls and other
+    // remotes reach the player through a MediaSession. Nothing in the audio path.
+    implementation("androidx.media3:media3-session:1.11.1")
     // Only reason OkHttp is here: HttpURLConnection.setRequestMethod("PROPFIND")
     // throws ProtocolException, so the platform client cannot speak WebDAV.
     // Playback uses media3's own DefaultHttpDataSource.

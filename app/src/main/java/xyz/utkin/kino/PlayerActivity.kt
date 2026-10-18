@@ -41,6 +41,7 @@ import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.util.DebugTextViewHelper
 import androidx.media3.exoplayer.util.EventLogger
 import androidx.media3.extractor.metadata.Chapter
+import androidx.media3.session.MediaSession
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
 import java.util.Locale
@@ -143,6 +144,11 @@ class PlayerActivity : Activity() {
     // Nullable, not lateinit: these exist only between onStart and onStop, and
     // `isInitialized` would still be true for a released player.
     private var player: ExoPlayer? = null
+
+    // What "Hey Google, pause" and the system's playback controls talk to. Its life is
+    // the player's: a session left open over a released player would advertise
+    // playback that no longer exists.
+    private var session: MediaSession? = null
 
     // Built here rather than left to DefaultLoadControl so the INFO overlay can ask it
     // how full it is. 64KB segments is what media3 and Plex both use.
@@ -309,6 +315,7 @@ class PlayerActivity : Activity() {
             .build()
         player = p
         playerView.player = p
+        session = MediaSession.Builder(this, p).build()
 
         debug = SinkAwareDebug(p, debugView)
         if (debugOn) debug?.start()
@@ -379,6 +386,8 @@ class PlayerActivity : Activity() {
         debug?.stop()
         debug = null
         playerView.player = null
+        session?.release()
+        session = null
         p.release()
         player = null
         allocator = null
