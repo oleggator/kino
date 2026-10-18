@@ -543,7 +543,9 @@ class PlayerActivity : Activity() {
      * What the platform says this TV + soundbar will accept as a bitstream, queried the
      * same way the player's own audio sink queries it. A format missing from this line
      * cannot be fixed in the app: it is the TV's (e)ARC capability report. ARC has no
-     * bandwidth for TrueHD or DTS-HD MA; eARC does.
+     * bandwidth for the lossless formats; eARC does. Missing one is not always fatal:
+     * getEncodingAndChannelConfigForPassthrough drops DTS-HD and DTS:X to the DTS core
+     * and JOC to E-AC-3. TrueHD is the one encoding with no fallback.
      */
     private fun sinkSummary(): String {
         // The four-argument overload is the only one not deprecated. It is routed-device

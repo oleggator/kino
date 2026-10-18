@@ -72,8 +72,8 @@ It sends transport commands and nothing else, so it sits outside the audio path.
 - **Compose skips on identity, not equality, for unstable parameter types.** `List` is
   unstable, so a list rebuilt during composition and passed down makes the callee and
   every row inside it recompose every time anything changes — which looks like the
-  rows flashing. The `remember(entries, stack.size)` around `rows` in `MainActivity`
-  is load-bearing, not tidiness.
+  rows flashing. The `remember(entries)` around `rows` in `MainActivity` is
+  load-bearing, not tidiness.
 - A `LaunchedEffect` body runs *after* composition, so clearing state inside one is
   always a frame late. The listing is tagged with the directory it came from and a
   mismatched tag reads as empty, which makes a stale listing impossible to render
@@ -127,11 +127,11 @@ the resolution. `just --evaluate sdk` prints the winner.
 
 Fetching is never implicit. `just sdk` is the only recipe that downloads an SDK, it is
 not a dependency of anything, and with no SDK found the build recipes fail pointing at
-it. Downloading half a gigabyte into someone's home as a side effect of "build the project" is
-the behaviour being avoided. Two traps are paid for inside that recipe: the tool
-resolves the SDK root to `~/Android` unless `ANDROID_HOME` is exported for it, whatever
-directory it is run from, and `--licenses` no longer exists (`yes |` in front of it dies
-on SIGPIPE). Underneath:
+it. Downloading half a gigabyte into someone's home as a side effect of "build the
+project" is the behaviour being avoided. Two traps are paid for inside that recipe:
+the tool resolves the SDK root to `~/Android` unless `ANDROID_HOME` is exported for it,
+whatever directory it is run from, and `--licenses` no longer exists (`yes |` in front
+of it dies on SIGPIPE). Underneath:
 
 ```
 ./gradlew test assembleRelease
@@ -154,7 +154,7 @@ is built from the real server's dialect (non-default port, deep base path,
 ## Files
 
 ```
-justfile                     SDK bootstrap + the build entrypoints
+justfile                     SDK resolution + the build entrypoints
 WebDav.kt                    PROPFIND + namespace-aware DOM parse. TAG lives here.
 Servers.kt                   the configured servers: storage, codec, ownerOf
 MainActivity.kt              Compose UI: server list, browse list, settings form
@@ -185,14 +185,15 @@ survive recreation (the directory stack), for zero extra dependencies.
 Each is marked with a `ponytail:` comment where it lives, saying what the ceiling is
 and what the upgrade would be: no paging (`WebDav`), unbounded resume-position
 preferences (`PlayerActivity`), extension-based file detection (`WebDav`), the 500 ms
-skip-button poll (`PlayerActivity`), and release builds signed with the debug key
-(`app/build.gradle.kts`).
+skip-button poll (`PlayerActivity`), release builds signed with the debug key
+(`app/build.gradle.kts`), and the deprecated `sdkmanager` shim (`justfile`).
 
 ## Credentials belong to a server, not to the app
 
-`basicAuthFor(prefs, url)` in `Servers.kt` is the only way an `Authorization` header is
-ever produced. It resolves the URL to the configured root that owns it — longest prefix
-wins — and returns null when none does, in which case **no header is sent at all**.
+`basicAuthFor` in `Servers.kt` is the only way an `Authorization` header is ever
+produced. The list overload builds it and the prefs overload delegates to that one, so
+both resolve the URL to the configured root that owns it — longest prefix wins — and
+return null when none does, in which case **no header is sent at all**.
 Do not reintroduce a global `basicAuth()`: with several servers configured, handing one
 server's password to another is the failure this design exists to prevent, and a
 server-supplied `href` pointing off-origin is the path that would do it.

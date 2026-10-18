@@ -27,6 +27,10 @@ class WebDavTest {
     <D:propstat><D:prop><D:resourcetype/></D:prop></D:propstat>
   </D:response>
   <D:response>
+    <D:href>/media/Score.flac</D:href>
+    <D:propstat><D:prop><D:resourcetype/></D:prop></D:propstat>
+  </D:response>
+  <D:response>
     <D:href>/media/notes.nfo</D:href>
     <D:propstat><D:prop><D:resourcetype/></D:prop></D:propstat>
   </D:response>
@@ -35,11 +39,16 @@ class WebDavTest {
     private fun parse(xml: String) = parseMultistatus(xml.toByteArray(), base)
 
     @Test
-    fun `keeps dirs and videos, drops self and non-video, dirs first then name`() {
+    fun `keeps dirs and playable files, drops self and the rest, dirs first then name`() {
         val entries = parse(multistatus)
 
-        assertEquals(listOf("shows", "Alpha.MP4", "Big Buck Bunny.mkv"), entries.map { it.name })
-        assertEquals(listOf(true, false, false), entries.map { it.isDir })
+        // Score.flac is here because audio is playable too -- PLAYABLE_EXTENSIONS is
+        // not a video list, and notes.nfo is what still has to be dropped.
+        assertEquals(
+            listOf("shows", "Alpha.MP4", "Big Buck Bunny.mkv", "Score.flac"),
+            entries.map { it.name },
+        )
+        assertEquals(listOf(true, false, false, false), entries.map { it.isDir })
     }
 
     @Test

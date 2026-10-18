@@ -11,7 +11,7 @@ DTS audio go to the soundbar as an untouched bitstream.
 - Android SDK `platforms;android-37.0` and `build-tools;36.0.0`. AGP 9 addresses
   platforms by minor version, so the directory really is `android-37.0`. Already have
   an SDK? The build finds it. If not, `just sdk` fetches a repo-local one.
-- JDK 17 or newer. Built and tested here on 21 and 26.
+- JDK 17 or newer. Built and tested here on 21, 26 and 27.
 
 ## Build
 
@@ -70,7 +70,7 @@ without such chapters never show it.
 ## Checking passthrough
 
 **INFO** toggles an overlay — or `adb shell input keyevent 165`, since most TV remotes
-have no INFO button. Above media3's own readout (video and audio format, decoder in
+have no INFO button. Under media3's own readout (video and audio format, decoder in
 use) it adds three lines:
 
 ```
@@ -104,5 +104,5 @@ decoder name means the track was decoded to PCM instead.
 | PGS / VobSub subtitles ignored | Media3 decodes text subtitles only — SRT, WebVTT, SSA/ASS, TTML. Bitmap subtitles would need an FFmpeg decoder. |
 | Dolby Vision is the TV's call, not the app's | Media3 1.11.1 reads the DV configuration from MKV and MP4 alike. Profile 8.1 plays as DV on a DV panel and falls back to its HDR10 base layer otherwise. Profile 7 (dual-layer Blu-ray rips) always plays as HDR10 — nothing on Android composes the enhancement layer. Profile 5 has no compatible base layer, so on a non-DV panel its colours will be wrong. |
 | AV1 may not play | No software decoder is bundled; the TV needs an AV1 hardware decoder. |
-| TrueHD and DTS-HD MA need eARC | ARC lacks the bandwidth. AC-3 and E-AC-3, including Atmos, pass over plain ARC. |
+| Lossless audio needs eARC | ARC lacks the bandwidth, eARC has it. Over plain ARC media3 drops DTS-HD MA and DTS:X to their DTS core and Dolby Digital Plus JOC to E-AC-3, so Atmos still arrives. TrueHD is the one with no fallback: it will not play. |
 | Cleartext HTTP allowed app-wide | The server URL is user-configurable, so the domain cannot be pinned in a network security config. |
